@@ -10,7 +10,7 @@ from research_pipelines.backends.base import Backend
 class PickleBackend(Backend):
     """Simple pickle-based backend for testing and development."""
 
-    def __init__(self, directory: str = ".traced_configs"):
+    def __init__(self, directory):
         """
         Initialize PickleBackend.
 
@@ -29,15 +29,19 @@ class PickleBackend(Backend):
     def log_config(
         self,
         object_id: str,
+        callable: str,
         config_dict: Dict[str, Any],
-        dependencies: List[str],
+        dependencies: Dict[str, str],
         object_type: str = "object",
+        parent_id: Optional[str] = None,
     ) -> None:
         """Log configuration for a traced object."""
         data = {
             "type": object_type,
             "config": config_dict,
             "dependencies": dependencies,
+            "callable": callable,
+            "parent_id": parent_id,
         }
         with open(self._get_pickle_path(object_id), "wb") as f:
             pickle.dump(data, f)

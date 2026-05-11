@@ -27,9 +27,11 @@ class WandBBackend(Backend):
     def log_config(
         self,
         object_id: str,
+        callable: str,
         config_dict: Dict[str, Any],
-        dependencies: List[str],
+        dependencies: Dict[str, str],
         object_type: str = "object",
+        parent_id: Optional[str] = None,
     ) -> None:
         """Log configuration for a traced object to wandb.run.config."""
         if self.wandb.run is None:
@@ -41,6 +43,8 @@ class WandBBackend(Backend):
             "type": object_type,
             "config": config_dict,
             "dependencies": dependencies,
+            "callable": callable,
+            "parent_id": parent_id,
         }
 
         self.wandb.run.config[object_id] = data

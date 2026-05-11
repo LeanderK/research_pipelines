@@ -11,17 +11,20 @@ class Backend(ABC):
     def log_config(
         self,
         object_id: str,
+        callable: str,
         config_dict: Dict[str, Any],
-        dependencies: List[str],
+        dependencies: Dict[str, str],
         object_type: str = "object",
+        parent_id: Optional[str] = None,
     ) -> None:
         """
         Log configuration for a traced object.
 
         Args:
             object_id: Unique identifier for the traced object
+            callable: The callable that created the object
             config_dict: Dictionary of serializable configuration (str, int, float)
-            dependencies: List of object_ids that this object depends on
+            dependencies: Dictionary mapping argument names to object_ids this object depends on
             object_type: Type of traced object (dataset, model, evaluation, ...)
         """
         pass

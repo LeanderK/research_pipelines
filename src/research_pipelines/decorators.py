@@ -29,28 +29,32 @@ def _get_traced_id_from_object(obj: Any) -> Optional[str]:
     return _object_to_traced_id.get(id(obj))
 
 
-def _find_traced_dependencies(args: Dict[str, Any]) -> Set[str]:
+def _find_traced_dependencies(args: Dict[str, Any]) -> Dict[str, str]:
     """
     Find traced object dependencies in arguments.
 
     Returns a set of traced object IDs that are referenced in the arguments.
     """
-    dependencies = set()
+    dependencies = {}
     
-    def extract_ids(value: Any) -> None:
+    def extract_ids(name: str, value: Any) -> None:
         """Recursively extract traced IDs from a value."""
         traced_id = _get_traced_id_from_object(value)
         if traced_id:
-            dependencies.add(traced_id)
-        elif isinstance(value, (list, tuple)):
-            for item in value:
-                extract_ids(item)
+            dependencies[name] = traced_id
+        elif isinstance(value, list):
+            for i, item in value:
+                extract_ids(f"{name}:l{i}", item)
+        elif isinstance(value, tuple):
+            for i, item in value:
+                extract_ids(f"{name}:t{i}", item)
         elif isinstance(value, dict):
-            for v in value.values():
-                extract_ids(v)
+            for k, v in value.items():
+                assert isinstance(k, str), "Only string keys are supported in argument dicts for tracing."
+                extract_ids(f"{name}:{k}", v)
 
-    for value in args.values():
-        extract_ids(value)
+    for name, value in args.items():
+        extract_ids(name, value)
 
     return dependencies
 
@@ -84,6 +88,8 @@ def traced(traced_type: str = "object", ignore_args: Optional[Iterable[str]] = N
 
         is_class = inspect.isclass(func_or_class)
 
+        qualname = f"{func_or_class.__module__}:{func_or_class.__qualname__}"
+
         if is_class:
             # Decorator on a class - wrap the __init__ method
             original_init = func_or_class.__init__
@@ -110,6 +116,7 @@ def traced(traced_type: str = "object", ignore_args: Optional[Iterable[str]] = N
                     traced_type=traced_type,
                     call_args=call_args,
                     return_value=self,
+                    callable=qualname
                 )
 
                 return result
@@ -140,6 +147,7 @@ def traced(traced_type: str = "object", ignore_args: Optional[Iterable[str]] = N
                     traced_type=traced_type,
                     call_args=call_args,
                     return_value=result,
+                    callable=qualname
                 )
 
                 return result
@@ -153,33 +161,41 @@ def _trace_return_value(
     traced_type: str,
     call_args: Dict[str, Any],
     return_value: Any,
+    callable: str,
+    parent_id: Optional[str] = None,
 ) -> None:
     """Trace a return value, recursively handling tuples and lists."""
-    if is_basic_type(return_value):
-        return
-
-    if isinstance(return_value, list):
-        for item in return_value:
-            _trace_return_value(traced_type, call_args, item)
-        return
-
-    if isinstance(return_value, tuple):
-        for item in return_value:
-            _trace_return_value(traced_type, call_args, item)
-        return
-
-    _log_trace(
+    # if is_basic_type(return_value):
+    #     return
+    
+    object_id = _log_trace(
         traced_type=traced_type,
         call_args=call_args,
         return_value=return_value,
+        callable=callable,
+        parent_id=parent_id,
     )
+
+    if isinstance(return_value, list):
+        for i, item in enumerate(return_value):
+            callable_item = f"{callable}[{i}]"
+            _trace_return_value(traced_type, {}, item, callable=callable_item, parent_id=object_id)
+        return
+
+    if isinstance(return_value, tuple):
+        for i, item in enumerate(return_value):
+            callable_item = f"{callable}[{i}]"
+            _trace_return_value(traced_type, {}, item, callable=callable_item, parent_id=object_id)
+        return
 
 
 def _log_trace(
     traced_type: str,
     call_args: Dict[str, Any],
     return_value: Any,
-) -> None:
+    callable: str,
+    parent_id: Optional[str] = None
+) -> str:
     """
     Log a trace: register object and persist to backend.
 
@@ -187,6 +203,10 @@ def _log_trace(
         traced_type: Type of traced object
         call_args: Arguments passed to the function/constructor
         return_value: The returned value to mark as traced
+        callable: The callable that created the object
+        parent_id: Optional ID of the parent object if this is a nested trace
+    Returns:
+        The generated object_id for the traced object
     """
     # Generate unique ID
     object_id = generate_object_id()
@@ -195,7 +215,18 @@ def _log_trace(
     config, non_basic = filter_arguments(call_args)
 
     # Find dependencies (traced objects used as arguments)
-    dependencies = list(_find_traced_dependencies(call_args))
+    dependencies = _find_traced_dependencies(call_args)
+
+    traced_args = set(
+        v.split(":")[0] for v in dependencies
+    )
+
+    if non_basic and not traced_args:
+        raise ValueError(
+            f"Traced object of type '{traced_type}' has non-basic arguments that are not traced objects. "
+            f"Please either trace the non-basic arguments or remove them from the trace using ignore_args. "
+            f"Non-basic args: {non_basic}"
+        )
 
     # Register in in-memory registry
     register_traced_object(
@@ -203,6 +234,8 @@ def _log_trace(
         object_type=traced_type,
         config=config,
         dependencies=dependencies,
+        callable=callable,
+        parent_id=parent_id
     )
 
     # Mark the returned object as traced
@@ -215,7 +248,11 @@ def _log_trace(
         config_dict=config,
         dependencies=dependencies,
         object_type=traced_type,
+        callable=callable,
+        parent_id=parent_id
     )
+
+    return object_id
 
 
 def dataset(ignore_args: Optional[Iterable[str]] = None) -> Callable:
@@ -252,3 +289,15 @@ def evaluation(ignore_args: Optional[Iterable[str]] = None) -> Callable:
             return results
     """
     return traced(traced_type="evaluation", ignore_args=ignore_args)
+
+
+def training(ignore_args: Optional[Iterable[str]] = None) -> Callable:
+    """
+    Decorator for tracing training runs.
+
+    Usage:
+        @training()
+        def train(model, data, epochs: int):
+            return trained_model
+    """
+    return traced(traced_type="training", ignore_args=ignore_args)

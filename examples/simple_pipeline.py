@@ -31,7 +31,7 @@ except ImportError as exc:  # pragma: no cover - runtime guidance only
 from research_pipelines.backends.manager import get_backend, set_backend
 from research_pipelines.backends.pickle_backend import PickleBackend
 from research_pipelines.core import clear_traced_registry, Ignore
-from research_pipelines.decorators import dataset, evaluation, model
+from research_pipelines.decorators import dataset, evaluation, model, training
 from research_pipelines.dag import build_dag
 
 
@@ -181,14 +181,14 @@ def accuracy_for_model(model: SimpleClassifier, features: torch.Tensor, labels: 
         return (predictions == labels).float().mean().item()
 
 
-@model()
+@training()
 def train(
     model: SimpleClassifier,
     train_split,
     artifact_root: Annotated[str, Ignore()],
     learning_rate: float = 0.05,
     epochs: int = 20,
-) -> SimpleClassifier:
+) -> None:
     """Train the classifier and persist a checkpoint.
     
     The artifact_root parameter is marked with Annotated[str, Ignore()] to exclude
@@ -225,8 +225,6 @@ def train(
             "checkpoint_path": str(checkpoint_path),
         },
     )
-
-    return model
 
 
 @evaluation()
@@ -281,7 +279,7 @@ def main():
     print()
 
     print("Step 3: Training model...")
-    model = train(model, train_split, artifact_root=str(DATA_ROOT), learning_rate=0.05, epochs=20)
+    train(model, train_split, artifact_root=str(DATA_ROOT), learning_rate=0.05, epochs=20)
     print()
 
     print("Step 4: Evaluating model...")

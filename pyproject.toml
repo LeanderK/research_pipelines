@@ -14,7 +14,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-torch = ["torch>=2.2.0"]
+example = ["torch>=2.2.0"]
+viz = ["matplotlib", "networkx"]
 wandb = ["wandb>=0.15.0"]
 dev = ["pytest>=9.0", "pytest-cov"]
 

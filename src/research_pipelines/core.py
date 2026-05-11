@@ -156,8 +156,10 @@ def filter_arguments(
 def register_traced_object(
     object_id: str,
     object_type: str,
+    callable: str,
     config: Dict[str, Any],
-    dependencies: Optional[List[str]] = None,
+    dependencies: Optional[Dict[str, str]] = None,
+    parent_id: Optional[str] = None
 ) -> None:
     """
     Register a traced object in the in-memory registry.
@@ -165,17 +167,21 @@ def register_traced_object(
     Args:
         object_id: Unique identifier for the object
         object_type: Type of object (e.g., "dataset", "model", "evaluation")
+        callable: The callable that created the object
         config: Configuration dictionary (basic types only)
-        dependencies: List of object_ids this object depends on
+        dependencies: Dictionary mapping argument names to object_ids this object depends on
+        parent_id: Optional ID of the parent object if this is a nested trace
     """
     if dependencies is None:
-        dependencies = []
+        dependencies = {}
 
     _traced_registry[object_id] = {
         "id": object_id,
         "type": object_type,
+        "callable": callable,
         "config": config,
         "dependencies": dependencies,
+        "parent_id": parent_id,
     }
 
 
