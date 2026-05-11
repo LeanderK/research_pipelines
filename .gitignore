@@ -1,0 +1,7 @@
+data/
+.traced_configs/
+__pycache__/
+.pytest_cache/
+*.pyc
+.vscode
+src/research_pipelines.egg-info

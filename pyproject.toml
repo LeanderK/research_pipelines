@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "research-pipelines"
+version = "0.1.0"
+description = "Lightweight research project pipeline framework with DAG tracing"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    # Core dependencies
+    # wandb is optional, installed separately for those who need it
+]
+
+[project.optional-dependencies]
+torch = ["torch>=2.2.0"]
+wandb = ["wandb>=0.15.0"]
+dev = ["pytest>=9.0", "pytest-cov"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v"
