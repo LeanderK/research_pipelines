@@ -13,7 +13,7 @@ def evaluate(model_obj, metric: str):
 It turns a huge, messy notebook into something simple like:
 
 ```python
-# (select a traced run and load its saved configurations)
+# (no pictured: select a traced run and load its saved configurations)
 # rebuild the arguments such that we can call evaluate ourselves
 model_obj, metric = query.build_arguments(
     evaluate
@@ -29,6 +29,9 @@ evaluate(model_obj, metric)
 ```bash
 pip install research-pipelines
 ```
+
+## Example
+Compare the example in `./examples`. We first trace a run in `examples/simple_pipeline.py` and can then rebuild our model (or our dataset) in `examples/load_and_predict.ipynb`.
 
 ## Features
 
