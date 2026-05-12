@@ -59,10 +59,17 @@ def load_data(path: str, split: str):
     return {"data": [...], "metadata": {...}}
 
 @model()
-def train_model(train_data, architecture: str, lr: float):
-    # Non-basic args (train_data) become dependencies
-    # Basic args (architecture, lr) become config
+def build_model(architecture: str):
+    # Basic args (architecture) become config
     return trained_model
+
+@training()
+def train_model(train_data, model, lr: float, epochs: int):
+    # Non-basic args (train_data, model) become dependencies
+    # Basic args (lr, epochs) become config
+    # here we train the model
+    for epoch in range(epochs):
+        ...
 
 @evaluation()
 def evaluate(model_obj, metric: str):
@@ -70,7 +77,8 @@ def evaluate(model_obj, metric: str):
 
 # Execute your pipeline
 data = load_data(path="/data/train.csv", split="train")
-model = train_model(train_data=data, architecture="bert", lr=0.001)
+model = build_model(architecture="bert")
+train_model(data, model)
 results = evaluate(model_obj=model, metric="accuracy")
 ```
 
