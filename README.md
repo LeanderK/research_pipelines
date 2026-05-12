@@ -21,7 +21,7 @@ model_obj, test_set = query.build_arguments(
 )
 # load saved weights
 model_obj.load_state_dict(state_dict)
-# call evaluate
+# call evaluate, but now with everything!
 evaluate(model_obj, test_set, full_evaluation=True)
 # do some plotting
 ```
