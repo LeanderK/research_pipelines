@@ -87,11 +87,6 @@ def evaluate(model_obj, metric: str):
 data = load_data(path="/data/train.csv", split="train")
 model = train_model(train_data=data, architecture="bert", lr=0.001)
 results = evaluate(model_obj=model, metric="accuracy")
-
-# Print the DAG
-dag = build_dag()
-for obj_id, obj in dag.items():
-    print(f"{obj['type']}: {obj['config']}, depends on: {obj['dependencies']}")
 ```
 
 ### Rebuild the traced object
@@ -100,7 +95,7 @@ The traced objects are not pickled, instead the arguments the functions are call
 ```python
 import research_pipelines.query as query
 
-# we can now easily call the functions with the recorded arguments via build()
+# we can now easily call the functions with the recorded arguments via build(fn_to_call)
 dataset = query.build(
     load_data
 )
