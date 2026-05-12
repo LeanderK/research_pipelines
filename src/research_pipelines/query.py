@@ -12,6 +12,7 @@ from typing import (
 import research_pipelines.backends.base as base
 import research_pipelines.decorators as decorators
 from research_pipelines.backends.manager import get_backend
+from inspect import signature
 
 # format of config
 # {'type': 'dataset',
@@ -22,6 +23,7 @@ from research_pipelines.backends.manager import get_backend
 
 
 def _build_args_from_config(
+    func: Callable[..., Any],
     config: dict[str, dict[str, Any]],
     kwargs_manual: dict[str, Any],
     dependency_objects: dict[str, Any],
@@ -63,11 +65,16 @@ def _build_args_from_config(
         else:
             kwargs[arg_name] = dependency_objects[dep_id]
 
+    sig = signature(func)
+    sig_arg_names = [param.name for param in sig.parameters.values()]
+
     for arg_name, arg_value in kwargs_manual.items():
         if arg_name in kwargs:
             print(
                 f"Warning: Manual argument {arg_name} is overriding traced argument with value {kwargs[arg_name]}."
             )
+        if arg_name not in sig_arg_names:
+            continue
         kwargs[arg_name] = arg_value
 
     for arg_base, type_arg in list_tuple_dependencies:
@@ -92,7 +99,6 @@ def _build_args_from_config(
             )
 
     return kwargs
-
 
 def _get_function_from_callable_str(
     callable_raw_str: str, import_translation: dict[str, str]
@@ -126,7 +132,7 @@ def build_from_config(
 ) -> Any:
     func, selection = _get_function_from_callable_str(config["callable"], import_translation)  # type: ignore
     kwargs = _build_args_from_config(
-        config, kwargs_manual, dependency_objects, import_translation
+        func, config, kwargs_manual, dependency_objects, import_translation
     )
     assert get_backend().is_recording_enabled() is False, "Backends should not be recording during build."
     value = func(**kwargs)
@@ -196,7 +202,6 @@ def _build_recursive(
             manual_kwargs,
             manual_import_translation,
         )
-        object_cache[object_id] = parent_object
         callable_raw_str: str = config["callable"]  # type: ignore
         if "[" in callable_raw_str:
             _, selection = callable_raw_str.split("[")
@@ -205,8 +210,11 @@ def _build_recursive(
             _ = callable_raw_str
             selection = None
         if selection is not None:
-            return parent_object[selection]
-        return parent_object
+            my_object = parent_object[selection]
+        else:
+            my_object = parent_object
+        object_cache[object_id] = my_object
+        return my_object
     else:
         for dep_id in config["dependencies"].values():
             if dep_id not in object_cache:
@@ -287,6 +295,10 @@ def build_arguments_kwargs(
     if persistent_cache is not None:
         object_cache = persistent_cache
 
+    func, _ = _get_function_from_callable_str(
+        config["callable"], manual_import_translation or {}
+    )
+
     dependency_objects = {}
     for dep_id in config["dependencies"].values():
         if dep_id not in object_cache:
@@ -302,7 +314,7 @@ def build_arguments_kwargs(
         dependency_objects[dep_id] = object_cache[dep_id]
 
     kwargs = _build_args_from_config(
-        config, manual_kwargs or {}, dependency_objects, manual_import_translation or {}
+        func, config, manual_kwargs or {}, dependency_objects, manual_import_translation or {}
     )
     return kwargs
 
@@ -358,7 +370,6 @@ def build_arguments(
     assert selection is None, "Selection is not supported for build_arguments"
 
     # now we need to inspect the function signature to get the argument names and order
-    from inspect import signature
     sig = signature(func)
     arg_names = []
     arg_values = []

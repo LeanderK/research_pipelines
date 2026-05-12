@@ -27,7 +27,7 @@ def _set_backend_state(backend: Optional[Backend]) -> None:
 sys.modules.setdefault("build.lib.research_pipelines.backends.manager", sys.modules[__name__])
 
 
-def get_backend() -> Backend:
+def get_backend(no_error: bool = False) -> Backend:
     """
     Get the currently active backend.
     """
@@ -39,14 +39,17 @@ def get_backend() -> Backend:
             backend = WandBBackend()
             _set_backend_state(backend)
         except ImportError:
-            print("WandB not found, PickleBackend needs manual setup.")
-            error_msg = """
-            No backend set and WandB not available.
-            To use PickleBackend, call set_backend(PickleBackend(directory='your_directory')) before tracing.
-            """
-            raise ValueError(
-                error_msg
-            )
+            if not no_error:
+                print("WandB not found, PickleBackend needs manual setup.")
+                error_msg = """
+                No backend set and WandB not available.
+                To use PickleBackend, call set_backend(PickleBackend(directory='your_directory')) before tracing.
+                """
+                raise ValueError(
+                    error_msg
+                )
+            else:
+                return None # type: ignore
     return backend
 
 

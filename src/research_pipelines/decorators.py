@@ -148,6 +148,7 @@ def traced(traced_type: str = "object", ignore_args: Optional[Iterable[str]] = N
 
             @functools.wraps(original_init)
             def new_init(self, *args, **kwargs):
+                __tracebackhide__ = True
                 # Capture the __init__ arguments
                 sig = inspect.signature(original_init)
                 bound_args = sig.bind(self, *args, **kwargs)
@@ -179,6 +180,7 @@ def traced(traced_type: str = "object", ignore_args: Optional[Iterable[str]] = N
             # Decorator on a function
             @functools.wraps(func_or_class)
             def wrapper(*args, **kwargs):
+                __tracebackhide__ = True
                 # Capture the function arguments
                 sig = inspect.signature(func_or_class)
                 bound_args = sig.bind(*args, **kwargs)
