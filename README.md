@@ -18,7 +18,7 @@ A lightweight Python framework for tracing the DAG (directed acyclic graph) of r
 cd research_pipelines
 
 # Create conda environment
-conda create -n research_pipelines python=3.10
+conda create -n research_pipelines python=3.11
 
 # Activate environment
 conda activate research_pipelines
@@ -27,7 +27,7 @@ conda activate research_pipelines
 pip install -e .
 
 # Optional: Install the Torch example extra
-pip install ".[torch]"
+pip install ".[example]"
 
 # Optional: Install wandb backend
 pip install ".[wandb]"

@@ -10,15 +10,25 @@ from research_pipelines.backends.base import Backend
 class PickleBackend(Backend):
     """Simple pickle-based backend for testing and development."""
 
-    def __init__(self, directory):
+    def __init__(self, directory, recording_enabled: bool = False):
         """
         Initialize PickleBackend.
 
         Args:
             directory: Directory to store pickle files (default: .traced_configs)
+            recording_enabled: Whether this backend should record traces
         """
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=True)
+        self._recording_enabled = recording_enabled
+
+    def is_recording_enabled(self) -> bool:
+        """Return whether this backend currently records traces."""
+        return self._recording_enabled
+
+    def set_recording_enabled(self, enabled: bool) -> None:
+        """Enable or disable recording for this backend."""
+        self._recording_enabled = enabled
 
     def _get_pickle_path(self, object_id: str) -> Path:
         """Get the pickle file path for an object_id."""
@@ -36,6 +46,9 @@ class PickleBackend(Backend):
         parent_id: Optional[str] = None,
     ) -> None:
         """Log configuration for a traced object."""
+        if not self.is_recording_enabled():
+            return
+
         data = {
             "type": object_type,
             "config": config_dict,

@@ -5,3 +5,4 @@ __pycache__/
 *.pyc
 .vscode
 src/research_pipelines.egg-info
+build

@@ -2,7 +2,7 @@
 
 import sys
 import uuid
-from typing import Any, Dict, List, Optional, Set, Tuple, get_args, get_origin
+from typing import Any, Dict, List, Optional, Set, Tuple, get_args, get_origin, get_type_hints
 
 # Global registry of traced objects (in-memory, separate from backend)
 _traced_registry: Dict[str, Dict[str, Any]] = {}
@@ -86,12 +86,18 @@ def extract_ignored_args_from_signature(func_or_class: Any) -> Set[str]:
             sig = inspect.signature(func_or_class.__init__)
         else:
             sig = inspect.signature(func_or_class)
+
+        hints = get_type_hints(func_or_class, include_extras=True)
         
         ignored = set()
         for param_name, param in sig.parameters.items():
             if param_name == "self":
                 continue
+            # check the type also
             if _is_ignore_marker(param.annotation):
+                ignored.add(param_name)
+            annotation = hints.get(param_name, inspect._empty)
+            if _is_ignore_marker(annotation):
                 ignored.add(param_name)
         
         return ignored

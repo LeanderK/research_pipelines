@@ -7,6 +7,10 @@ from typing import Any, Dict, List, Optional
 class Backend(ABC):
     """Abstract base class for configuration storage backends."""
 
+    def is_recording_enabled(self) -> bool:
+        """Return whether this backend should record traces right now."""
+        return True
+
     @abstractmethod
     def log_config(
         self,

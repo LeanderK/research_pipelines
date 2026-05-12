@@ -1,5 +1,6 @@
 """WandB-based backend for storing traced configurations."""
 
+import importlib
 from typing import Any, Dict, List, Optional
 
 from research_pipelines.backends.base import Backend
@@ -14,15 +15,17 @@ class WandBBackend(Backend):
 
         Requires an active wandb run (wandb.init() should be called first).
         """
-        # Lazy import of wandb
         try:
-            import wandb
-            self.wandb = wandb
+            self.wandb = importlib.import_module("wandb")
         except ImportError:
             raise ImportError(
                 "wandb is required for WandBBackend. "
                 "Install it with: pip install wandb"
             )
+
+    def is_recording_enabled(self) -> bool:
+        """Return whether there is an active wandb run to record into."""
+        return self.wandb.run is not None
 
     def log_config(
         self,
@@ -34,10 +37,8 @@ class WandBBackend(Backend):
         parent_id: Optional[str] = None,
     ) -> None:
         """Log configuration for a traced object to wandb.run.config."""
-        if self.wandb.run is None:
-            raise RuntimeError(
-                "No active wandb run. Call wandb.init() before using WandBBackend."
-            )
+        if not self.is_recording_enabled():
+            return
 
         data = {
             "type": object_type,
@@ -51,14 +52,14 @@ class WandBBackend(Backend):
 
     def get_config(self, object_id: str) -> Optional[Dict[str, Any]]:
         """Retrieve configuration for a traced object from wandb.run.config."""
-        if self.wandb.run is None:
+        if not self.is_recording_enabled():
             return None
 
         return self.wandb.run.config.get(object_id)
 
     def load_all(self) -> Dict[str, Dict[str, Any]]:
         """Load all configurations from wandb.run.config."""
-        if self.wandb.run is None:
+        if not self.is_recording_enabled():
             return {}
 
         result = {}
@@ -71,7 +72,7 @@ class WandBBackend(Backend):
 
     def clear(self) -> None:
         """Clear all stored configurations from wandb.run.config."""
-        if self.wandb.run is None:
+        if not self.is_recording_enabled():
             return
 
         # Get all keys that are our traced objects

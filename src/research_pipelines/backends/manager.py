@@ -1,24 +1,43 @@
 """Global backend management."""
 
+import builtins
+import tempfile
+import sys
 from typing import Optional
 
 from research_pipelines.backends.base import Backend
 from research_pipelines.backends.pickle_backend import PickleBackend
 
-# Global backend instance
-_backend: Optional[Backend] = None
+_BACKEND_STATE_KEY = "_research_pipelines_backend"
+
+
+def _get_backend_state() -> Optional[Backend]:
+    """Read the process-global backend state."""
+    return getattr(builtins, _BACKEND_STATE_KEY, None)
+
+
+def _set_backend_state(backend: Optional[Backend]) -> None:
+    """Write the process-global backend state."""
+    setattr(builtins, _BACKEND_STATE_KEY, backend)
+
+
+# Legacy import alias support: some environments may still import this module via
+# build.lib.research_pipelines.backends.manager. Point that name at the same module
+# object so the backend singleton stays shared.
+sys.modules.setdefault("build.lib.research_pipelines.backends.manager", sys.modules[__name__])
 
 
 def get_backend() -> Backend:
     """
     Get the currently active backend.
     """
-    global _backend
-    if _backend is None:
+    backend = _get_backend_state()
+    if backend is None:
         # is wandb available? If so, use WandBBackend, otherwise default to PickleBackend
         try:
             from research_pipelines.backends.wandb_backend import WandBBackend
-            _backend = WandBBackend()
+            backend = WandBBackend()
+            _set_backend_state(backend)
         except ImportError:
             print("WandB not found, PickleBackend needs manual setup.")
             error_msg = """
@@ -28,16 +47,14 @@ def get_backend() -> Backend:
             raise ValueError(
                 error_msg
             )
-    return _backend
+    return backend
 
 
 def set_backend(backend: Backend) -> None:
     """Set the active backend."""
-    global _backend
-    _backend = backend
+    _set_backend_state(backend)
 
 
 def reset_backend() -> None:
     """Reset backend to None (will use default on next get_backend call)."""
-    global _backend
-    _backend = None
+    _set_backend_state(None)

@@ -1,12 +1,16 @@
 """Tests for backend implementations."""
 
+import importlib
 import shutil
 import tempfile
+import sys
+import types
 from pathlib import Path
 
 import pytest
 
 from research_pipelines.backends.pickle_backend import PickleBackend
+from research_pipelines.backends.wandb_backend import WandBBackend
 from research_pipelines.backends.manager import get_backend, set_backend, reset_backend
 
 
@@ -123,6 +127,29 @@ class TestPickleBackend:
         assert result is not None
         assert result["config"] == {"data": "test"}
 
+    def test_pickle_backend_disabled_does_not_record(self, backend):
+        """Test that PickleBackend can disable recording mode."""
+        backend.set_recording_enabled(False)
+
+        backend.log_config("obj_disabled", "callable", {"x": 1}, {})
+
+        assert backend.is_recording_enabled() is False
+        assert backend.get_config("obj_disabled") is None
+        assert backend.load_all() == {}
+
+    def test_pickle_backend_can_reenable_recording(self, backend):
+        """Test that PickleBackend can re-enable recording after disable."""
+        backend.set_recording_enabled(False)
+        backend.log_config("obj_off", "callable", {"x": 1}, {})
+
+        backend.set_recording_enabled(True)
+        backend.log_config("obj_on", "callable", {"x": 2}, {})
+
+        assert backend.is_recording_enabled() is True
+        assert backend.get_config("obj_off") is None
+        assert backend.get_config("obj_on") is not None
+        assert backend.get_config("obj_on")["config"] == {"x": 2}
+
 
 class TestBackendManager:
     """Tests for backend manager (global state)."""
@@ -171,3 +198,39 @@ class TestBackendManager:
 
         # Should be different instances after reset
         assert backend1 is not backend2
+
+    def test_backend_shared_across_legacy_import_path(self):
+        """Test that the backend is shared with the legacy build.lib import path."""
+        reset_backend()
+        custom_backend = PickleBackend(directory=tempfile.mkdtemp())
+
+        set_backend(custom_backend)
+
+        legacy_manager = importlib.import_module("build.lib.research_pipelines.backends.manager")
+
+        assert legacy_manager.get_backend() is custom_backend
+        assert get_backend() is custom_backend
+
+    def test_wandb_backend_noops_without_active_run(self, monkeypatch):
+        """Test that WandBBackend does not record when wandb.run is missing."""
+        monkeypatch.setitem(sys.modules, "wandb", types.SimpleNamespace(run=None))
+
+        backend = WandBBackend()
+
+        assert backend.is_recording_enabled() is False
+        backend.log_config("obj", "callable", {"x": 1}, {}, "dataset")
+        assert backend.get_config("obj") is None
+        assert backend.load_all() == {}
+
+    def test_wandb_backend_records_with_active_run(self, monkeypatch):
+        """Test that WandBBackend records when wandb.run is active."""
+        fake_run = types.SimpleNamespace(config={})
+        monkeypatch.setitem(sys.modules, "wandb", types.SimpleNamespace(run=fake_run))
+
+        backend = WandBBackend()
+
+        assert backend.is_recording_enabled() is True
+        backend.log_config("obj", "callable", {"x": 1}, {}, "dataset")
+
+        assert backend.get_config("obj")["config"] == {"x": 1}
+        assert backend.load_all()["obj"]["config"] == {"x": 1}

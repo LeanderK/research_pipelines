@@ -1,7 +1,10 @@
 """Decorators for tracing dataset, model, and evaluation dependencies."""
 
+import __main__
 import functools
 import inspect
+import pathlib
+import sys
 from typing import Any, Callable, Dict, Iterable, Optional, Set
 
 from research_pipelines.core import (
@@ -58,6 +61,54 @@ def _find_traced_dependencies(args: Dict[str, Any]) -> Dict[str, str]:
 
     return dependencies
 
+import inspect
+import pathlib
+import sys
+
+def stable_qualname(obj):
+    module = inspect.getmodule(obj)
+
+    # --- Case 1: normal import ---
+    if module and module.__name__ != "__main__":
+        return f"{module.__name__}:{obj.__qualname__}"
+
+    # --- Case 2: executed as script ---
+    file_path = pathlib.Path(
+        getattr(module, "__file__", None)
+        or getattr(obj, "__code__", None).co_filename
+    ).resolve()
+
+    # --- Walk upwards to find package root (__init__.py) ---
+    parts = file_path.with_suffix("").parts
+
+    # find last directory that is inside a package
+    current = file_path.parent
+    package_root = None
+
+    while current != current.parent:
+        if (current / "__init__.py").exists():
+            package_root = current
+        current = current.parent
+
+    # --- Reconstruct module path ---
+    if package_root:
+        rel = file_path.relative_to(package_root)
+        module_name = ".".join(package_root.parts[-1:] + rel.with_suffix("").parts)
+    else:
+        # fallback: sys.path heuristic
+        for base in sorted(sys.path, key=len, reverse=True):
+            try:
+                base_path = pathlib.Path(base).resolve()
+                rel = file_path.relative_to(base_path)
+                module_name = ".".join(rel.with_suffix("").parts)
+                break
+            except Exception:
+                continue
+        else:
+            module_name = file_path.stem
+
+    return f"{module_name}:{obj.__qualname__}"
+
 
 def traced(traced_type: str = "object", ignore_args: Optional[Iterable[str]] = None) -> Callable:
     """
@@ -88,7 +139,8 @@ def traced(traced_type: str = "object", ignore_args: Optional[Iterable[str]] = N
 
         is_class = inspect.isclass(func_or_class)
 
-        qualname = f"{func_or_class.__module__}:{func_or_class.__qualname__}"
+        qualname = stable_qualname(func_or_class)
+        # print(f"Decorating {qualname} as traced {traced_type} with ignored args: {ignored_names}")
 
         if is_class:
             # Decorator on a class - wrap the __init__ method
@@ -176,6 +228,9 @@ def _trace_return_value(
         parent_id=parent_id,
     )
 
+    if not object_id:
+        return
+
     if isinstance(return_value, list):
         for i, item in enumerate(return_value):
             callable_item = f"{callable}[{i}]"
@@ -208,6 +263,10 @@ def _log_trace(
     Returns:
         The generated object_id for the traced object
     """
+    backend = get_backend()
+    if not backend.is_recording_enabled():
+        return ""
+
     # Generate unique ID
     object_id = generate_object_id()
 
@@ -242,7 +301,6 @@ def _log_trace(
     _mark_object_as_traced(return_value, object_id)
 
     # Persist to backend
-    backend = get_backend()
     backend.log_config(
         object_id=object_id,
         config_dict=config,

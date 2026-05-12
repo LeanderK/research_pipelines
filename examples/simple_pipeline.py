@@ -98,15 +98,21 @@ def split_data(
 
 
 @dataset()
-def create_classification_splits(artifact_root: Annotated[str, Ignore()]):
+def create_classification_splits(
+    artifact_root: Annotated[str, Ignore()],
+    samples_per_class: int,
+    noise: float,
+    seed: int,
+    ):
     """Generate, persist, and return train/val/test splits as traced objects.
     
     The artifact_root parameter is marked with Annotated[str, Ignore()] to exclude
     it from the traced configuration, even though we use it for persisting splits.
     """
-    ensure_directories()
 
-    features, labels = make_blob_data(samples_per_class=80, noise=0.35, seed=7)
+    SPLIT_ROOT = Path(artifact_root) / "splits"
+
+    features, labels = make_blob_data(samples_per_class=samples_per_class, noise=noise, seed=seed)
     train_split, val_split, test_split = split_data(features, labels, train_fraction=0.7, val_fraction=0.15)
 
     train_features, train_labels = train_split
@@ -258,9 +264,12 @@ def predict_sample(model: SimpleClassifier, feature_vector: torch.Tensor) -> dic
 def main():
     """Run the pipeline and print the DAG."""
     ensure_directories()
-    set_backend(PickleBackend(directory=str(TRACE_ROOT)))
+    set_backend(PickleBackend(directory=str(TRACE_ROOT), recording_enabled=True))
     clear_traced_registry()
     get_backend().clear()
+    # delete all files in TRACE_ROOT to ensure clean slate for this example
+    for file in TRACE_ROOT.glob("*"):
+        file.unlink()
 
     print("=" * 60)
     print("Research Pipelines - Torch Classification Example")
@@ -268,7 +277,12 @@ def main():
     print()
 
     print("Step 1: Creating synthetic splits...")
-    train_split, val_split, test_split = create_classification_splits(artifact_root=str(DATA_ROOT))
+    train_split, val_split, test_split = create_classification_splits(
+        artifact_root=str(DATA_ROOT),
+        samples_per_class=80,
+        noise=0.35,
+        seed=7
+    )
     print(f"Train split size: {train_split['features'].shape[0]}")
     print(f"Validation split size: {val_split['features'].shape[0]}")
     print(f"Test split size: {test_split['features'].shape[0]}")

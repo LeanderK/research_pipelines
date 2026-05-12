@@ -2,6 +2,7 @@
 
 import tempfile
 import shutil
+from typing import Annotated
 
 import pytest
 
@@ -10,7 +11,9 @@ from research_pipelines.core import (
     get_traced_object,
     generate_object_id,
     register_traced_object,
+    Ignore,
 )
+from research_pipelines.backends.base import Backend
 from research_pipelines.backends.pickle_backend import PickleBackend
 from research_pipelines.backends.manager import set_backend, reset_backend
 from research_pipelines.decorators import traced, dataset, model, evaluation
@@ -139,6 +142,37 @@ class TestGenericTracedDecorator:
 
         ids = set(registry.keys())
         assert len(ids) == 3  # All IDs should be unique
+
+    def test_traced_skips_when_backend_inactive(self):
+        """Tracing should no-op when backend recording is disabled."""
+
+        class InactiveBackend(Backend):
+            def is_recording_enabled(self) -> bool:
+                return False
+
+            def log_config(self, object_id, callable, config_dict, dependencies, object_type="object", parent_id=None):
+                raise AssertionError("log_config should not be called when recording is disabled")
+
+            def get_config(self, object_id):
+                return None
+
+            def load_all(self):
+                return {}
+
+            def clear(self):
+                return None
+
+        set_backend(InactiveBackend())
+
+        @traced(traced_type="dataset")
+        def create_dataset(name: str):
+            return {"name": name}
+
+        result = create_dataset(name="test")
+        assert result == {"name": "test"}
+
+        registry = __import__("research_pipelines.core", fromlist=["get_traced_registry"]).get_traced_registry()
+        assert len(registry) == 0
 
 
 class TestSpecializedDecorators:
@@ -365,12 +399,10 @@ class TestIgnoredArguments:
         evaluation_entry = [entry for entry in registry.values() if entry["type"] == "evaluation"][0]
         assert len(evaluation_entry["dependencies"]) == 1
 
-    def test_ignore_arg_type_wrapper_annotation(self):
-        """Ignored arguments using IgnoreArg[T] type annotation should not be traced."""
-        from research_pipelines.core import IgnoreArg
-
+    def test_ignore_arg_with_annotated(self):
+        """Ignored arguments using Annotated[T, Ignore()] should not be traced."""
         @dataset()
-        def create_dataset(artifact_root: IgnoreArg[str], seed: int):
+        def create_dataset(artifact_root: Annotated[str, Ignore()], seed: int):
             return {"seed": seed}
 
         create_dataset(artifact_root="/tmp/data", seed=42)
@@ -381,34 +413,26 @@ class TestIgnoredArguments:
         assert "artifact_root" not in obj["config"]
         assert obj["config"]["seed"] == 42
 
-    def test_ignore_arg_with_annotated(self):
-        """Ignored arguments using Annotated[T, Ignore()] should not be traced."""
-        import sys
-        
-        if sys.version_info >= (3, 9):
-            from typing import Annotated
-            from research_pipelines.core import Ignore
+    def test_ignore_arg_with_annotated_model(self):
+        """Annotated ignore markers should work for model decorators too."""
 
-            @model()
-            def build_model(artifact_root: Annotated[str, Ignore()], hidden_dim: int):
-                return {"ok": True}
+        @model()
+        def build_model(artifact_root: Annotated[str, Ignore()], hidden_dim: int):
+            return {"ok": True}
 
-            build_model(artifact_root="/tmp/model", hidden_dim=256)
+        build_model(artifact_root="/tmp/model", hidden_dim=256)
 
-            registry = __import__("research_pipelines.core", fromlist=["get_traced_registry"]).get_traced_registry()
-            obj = list(registry.values())[0]
+        registry = __import__("research_pipelines.core", fromlist=["get_traced_registry"]).get_traced_registry()
+        obj = list(registry.values())[0]
 
-            assert "artifact_root" not in obj["config"]
-            assert obj["config"]["hidden_dim"] == 256
-        else:
-            pytest.skip("Annotated requires Python 3.9+")
+        assert "artifact_root" not in obj["config"]
+        assert obj["config"]["hidden_dim"] == 256
 
     def test_ignore_arg_mixed_with_explicit_ignore_args(self):
-        """Test combining IgnoreArg annotation with explicit ignore_args parameter."""
-        from research_pipelines.core import IgnoreArg
+        """Test combining Annotated ignore markers with explicit ignore_args parameter."""
 
         @dataset(ignore_args=["cache_dir"])
-        def create_dataset(artifact_root: IgnoreArg[str], cache_dir: str, seed: int):
+        def create_dataset(artifact_root: Annotated[str, Ignore()], cache_dir: str, seed: int):
             return {"seed": seed}
 
         create_dataset(artifact_root="/tmp/data", cache_dir="/tmp/cache", seed=99)
@@ -422,12 +446,11 @@ class TestIgnoredArguments:
         assert obj["config"]["seed"] == 99
 
     def test_ignore_arg_with_class_constructor(self):
-        """Test IgnoreArg annotation on class constructor parameters."""
-        from research_pipelines.core import IgnoreArg
+        """Test Annotated ignore markers on class constructor parameters."""
 
         @model()
         class MyModel:
-            def __init__(self, artifact_root: IgnoreArg[str], hidden_dim: int):
+            def __init__(self, artifact_root: Annotated[str, Ignore()], hidden_dim: int):
                 self.hidden_dim = hidden_dim
 
         m = MyModel(artifact_root="/tmp/model", hidden_dim=512)
