@@ -6,3 +6,4 @@ __pycache__/
 .vscode
 src/research_pipelines.egg-info
 build
+dist
