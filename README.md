@@ -39,28 +39,6 @@ pip install research-pipelines
 - **Zero Boilerplate**: Apply decorators and your functions/classes are automatically traced
 - **Recursive Dependency Resolution**: Full transitive closure of all dependencies
 
-## Installation (Dev)
-
-```bash
-# Clone or create the project
-cd research_pipelines
-
-# Create conda environment
-conda create -n research_pipelines python=3.11
-
-# Activate environment
-conda activate research_pipelines
-
-# Install package in editable mode
-pip install -e .
-
-# Optional: Install the Torch example extra
-pip install ".[example]"
-
-# Optional: Install wandb backend
-pip install ".[wandb]"
-```
-
 ## Quick Start
 
 ```python
@@ -107,6 +85,29 @@ model_obj, metric = query.build_arguments(
 model_obj.load_state_dict(state_dict)
 evaluate(model_obj, metric)
 ```
+
+## Installation (Dev)
+
+```bash
+# Clone or create the project
+cd research_pipelines
+
+# Create conda environment
+conda create -n research_pipelines python=3.11
+
+# Activate environment
+conda activate research_pipelines
+
+# Install package in editable mode
+pip install -e .
+
+# Optional: Install the Torch example extra
+pip install ".[example]"
+
+# Optional: Install wandb backend
+pip install ".[wandb]"
+```
+
 
 ## How It Works
 
