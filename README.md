@@ -21,6 +21,7 @@ model_obj, metric = query.build_arguments(
 model_obj.load_state_dict(state_dict)
 # call evaluate
 evaluate(model_obj, metric)
+# do some plotting
 ```
 
 
