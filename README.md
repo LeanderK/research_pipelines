@@ -11,7 +11,7 @@ A lightweight Python framework for tracing the DAG (directed acyclic graph) of r
 - **Circular Dependency Detection**: Validates DAG structure to catch mistakes early
 - **Recursive Dependency Resolution**: Full transitive closure of all dependencies
 
-## Installation
+## Installation (Dev)
 
 ```bash
 # Clone or create the project
@@ -64,6 +64,25 @@ results = evaluate(model_obj=model, metric="accuracy")
 dag = build_dag()
 for obj_id, obj in dag.items():
     print(f"{obj['type']}: {obj['config']}, depends on: {obj['dependencies']}")
+```
+
+### Rebuild the traced object
+The traced objects are not pickled, instead the arguments the functions are called with are saved.
+
+```python
+import research_pipelines.query as query
+
+# we can now easily call the functions with the recorded arguments via build()
+dataset = query.build(
+    load_data
+)
+
+# or just get the arguments such that we can call it ourselves
+model_obj, metric = query.build_arguments(
+    evaluate
+)
+model_obj.load_state_dict(state_dict)
+evaluate(model_obj, metric)
 ```
 
 ## How It Works
@@ -200,42 +219,6 @@ models = get_objects_by_type("model")
 dependents = get_dependents(object_id)
 ```
 
-### Core Functions
-
-```python
-from research_pipelines.core import (
-    generate_object_id,
-    is_basic_type,
-    filter_arguments,
-    register_traced_object,
-    get_traced_object,
-    get_traced_registry,
-    clear_traced_registry,
-)
-
-# Generate unique ID (UUID v4)
-obj_id = generate_object_id()
-
-# Check if value is serializable
-if is_basic_type(value):
-    pass  # Can be stored in config
-
-# Separate basic from non-basic args
-basic_args, non_basic_args = filter_arguments(args_dict)
-
-# Register object in in-memory registry
-register_traced_object(obj_id, "dataset", {"key": "value"}, dependencies=[])
-
-# Retrieve object
-obj = get_traced_object(obj_id)
-
-# Get full registry
-registry = get_traced_registry()
-
-# Clear registry (testing)
-clear_traced_registry()
-```
-
 ### Backends
 
 ```python
@@ -273,6 +256,7 @@ Configurations are stored as dictionaries with the following structure:
 ```python
 {
     "object_id_1": {
+        "callable": "examples.simple_pipeline:load_dataset"
         "config": {
             "path": "/data/train.csv",
             "split": "train",
@@ -281,6 +265,7 @@ Configurations are stored as dictionaries with the following structure:
         "dependencies": [],
     },
     "object_id_2": {
+        "callable": "examples.simple_pipeline:create_model"
         "config": {
             "architecture": "bert",
             "learning_rate": 0.001,
@@ -338,7 +323,6 @@ The framework is organized into modules:
 
 - No support for custom object serialization (by design)
 - No execution timing/profiling (configuration-only tracking)
-- Circular dependencies are detected but not prevented
 - No automatic versioning/hashing of objects
 
 ## License
