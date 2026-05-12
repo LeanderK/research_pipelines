@@ -1,4 +1,5 @@
 # Research Pipelines
+![PyPI - Version](https://img.shields.io/pypi/v/research-pipelines)
 
 A lightweight Python framework for tracing the DAG (directed acyclic graph) of research experiments. Automatically track datasets, models, and evaluations arguments and function-dependencies, then persist everything to wandb or local storage. This is especially useful for plotting of further evaluation of a trained model, as we can recreate the a function call or just the arguments of a traced function. By design, it is a pickle-free solution that relies on recording primitve arguments.
 
@@ -24,8 +25,10 @@ evaluate(model_obj, metric)
 # do some plotting
 ```
 
-
-
+## Install
+```bash
+pip install research-pipelines
+```
 
 ## Features
 
