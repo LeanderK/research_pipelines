@@ -16,7 +16,7 @@ It turns a huge, messy notebook into something simple like:
 # (no pictured: select a traced run and load its saved configurations)
 # rebuild the arguments such that we can call evaluate ourselves
 # no pickle!
-model_obj, test_set = query.build_arguments(
+model_obj, test_set, _ = query.build_arguments(
     target=evaluate
 )
 # load saved weights
