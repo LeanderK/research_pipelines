@@ -6,7 +6,7 @@ A lightweight Python framework for tracing the components of research experiment
 Just decorate function during training like:
 ```python
 @evaluation()
-def evaluate(model_obj, metric: str, full_evalution=False):
+def evaluate(model_obj, test_set, full_evaluation=False):
     return ...
 ```
 
@@ -16,15 +16,18 @@ It turns a huge, messy notebook into something simple like:
 # (no pictured: select a traced run and load its saved configurations)
 # rebuild the arguments such that we can call evaluate ourselves
 # no pickle!
-model_obj, metric = query.build_arguments(
+model_obj, test_set = query.build_arguments(
     target=evaluate
 )
 # load saved weights
 model_obj.load_state_dict(state_dict)
 # call evaluate
-evaluate(model_obj, metric, full_evalution=True)
+evaluate(model_obj, test_set, full_evaluation=True)
 # do some plotting
 ```
+
+This is done through computing the dependency-graph between the function calls, which can look like this:
+![img](/figures/dependencies.png)
 
 ## Install
 ```bash
