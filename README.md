@@ -1,13 +1,13 @@
 # Research Pipelines
 ![PyPI - Version](https://img.shields.io/pypi/v/research-pipelines)
 
-A lightweight Python framework for tracing the components of research experiments. Automatically track datasets, models, and evaluations function arguments and function-dependencies, then persist everything to wandb or local storage. This is especially useful for plotting of further evaluation of a trained model, as we can recreate the a function call or just the arguments of a traced function. By design, it is a pickle-free solution that relies on recording primitve arguments.
+A lightweight Python framework for tracing the components of research experiments. Automatically track datasets, models, and evaluations-function arguments and function-dependencies, then persist everything to wandb or local storage. This is especially useful for plotting or further evaluation of a trained model, as we can recreate the a function call or just the arguments of a traced function. By design, it is a pickle-free solution that relies on recording primitve arguments.
 
 Just decorate function during training like:
 ```python
 @evaluation()
-def evaluate(model_obj, metric: str):
-    return {"score": 0.95}
+def evaluate(model_obj, metric: str, full_evalution=False):
+    return ...
 ```
 
 It turns a huge, messy notebook into something simple like:
@@ -15,14 +15,14 @@ It turns a huge, messy notebook into something simple like:
 ```python
 # (no pictured: select a traced run and load its saved configurations)
 # rebuild the arguments such that we can call evaluate ourselves
-# no pickel!
+# no pickle!
 model_obj, metric = query.build_arguments(
     target=evaluate
 )
 # load saved weights
 model_obj.load_state_dict(state_dict)
 # call evaluate
-evaluate(model_obj, metric)
+evaluate(model_obj, metric, full_evalution=True)
 # do some plotting
 ```
 
