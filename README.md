@@ -25,13 +25,15 @@ evaluate(model_obj, metric)
 ```
 
 
+
+
 ## Features
 
 - **Automatic DAG Tracing**: Decorators automatically detect when traced objects are used as dependencies
 - **Configuration Persistence**: Basic types (str, int, float, bool, None) are automatically captured and stored
+- **Flexible Rebuilding**: The query backend allows for calling the traced functions again, even if they depend on other traced functions
 - **Pluggable Backends**: Use PickleBackend for testing or WandBBackend for production wandb integration
 - **Zero Boilerplate**: Apply decorators and your functions/classes are automatically traced
-- **Circular Dependency Detection**: Validates DAG structure to catch mistakes early
 - **Recursive Dependency Resolution**: Full transitive closure of all dependencies
 
 ## Installation (Dev)
