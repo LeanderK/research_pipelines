@@ -94,7 +94,7 @@ class TestArgumentFiltering:
         
         # Register a traced object
         traced_id = generate_object_id()
-        register_traced_object(traced_id, "dataset", {"data": "value"})
+        register_traced_object(traced_id, "dataset", "callable", {"data": "value"})
         
         # Create a mock traced object (we'll use a dict with special marker)
         traced_obj = {"_traced_object_id": traced_id}
@@ -135,7 +135,7 @@ class TestTracedObjectRegistry:
         obj_id = generate_object_id()
         config = {"name": "my_dataset"}
         
-        register_traced_object(obj_id, "dataset", config)
+        register_traced_object(obj_id, "dataset", "callable", config)
         
         retrieved = get_traced_object(obj_id)
         assert retrieved is not None
@@ -147,16 +147,17 @@ class TestTracedObjectRegistry:
         dataset_id = generate_object_id()
         model_id = generate_object_id()
         
-        register_traced_object(dataset_id, "dataset", {"name": "data"})
+        register_traced_object(dataset_id, "dataset", "callable", {"name": "data"})
         register_traced_object(
             model_id,
             "model",
+            "callable",
             {"lr": 0.001},
-            dependencies=[dataset_id],
+            dependencies={"dataset": dataset_id},
         )
         
         model_obj = get_traced_object(model_id)
-        assert model_obj["dependencies"] == [dataset_id]
+        assert model_obj["dependencies"] == {"dataset": dataset_id}
 
     def test_get_nonexistent_object(self):
         """Test retrieving a non-existent object."""
@@ -168,8 +169,8 @@ class TestTracedObjectRegistry:
         obj_id1 = generate_object_id()
         obj_id2 = generate_object_id()
         
-        register_traced_object(obj_id1, "dataset", {"name": "d1"})
-        register_traced_object(obj_id2, "model", {"name": "m1"})
+        register_traced_object(obj_id1, "dataset", "callable", {"name": "d1"})
+        register_traced_object(obj_id2, "model", "callable", {"name": "m1"})
         
         registry = get_traced_registry()
         assert len(registry) == 2
@@ -179,7 +180,7 @@ class TestTracedObjectRegistry:
     def test_clear_traced_registry(self):
         """Test clearing the registry."""
         obj_id = generate_object_id()
-        register_traced_object(obj_id, "dataset", {})
+        register_traced_object(obj_id, "dataset", "callable", {})
         assert len(get_traced_registry()) == 1
         
         clear_traced_registry()
@@ -189,7 +190,7 @@ class TestTracedObjectRegistry:
         """Test that registry is isolated from backend."""
         # Registry should be separate from backend storage
         obj_id = generate_object_id()
-        register_traced_object(obj_id, "dataset", {"name": "data"})
+        register_traced_object(obj_id, "dataset", "callable", {"name": "data"})
         
         retrieved = get_traced_object(obj_id)
         assert retrieved is not None

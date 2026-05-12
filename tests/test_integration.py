@@ -21,7 +21,7 @@ class TestEndToEndPipeline:
         clear_traced_registry()
         reset_backend()
         temp_dir = tempfile.mkdtemp()
-        backend = PickleBackend(directory=temp_dir)
+        backend = PickleBackend(directory=temp_dir, recording_enabled=True)
         set_backend(backend)
         yield
         shutil.rmtree(temp_dir)

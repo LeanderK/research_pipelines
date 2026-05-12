@@ -30,7 +30,7 @@ class TestDAGBuilding:
     def test_build_dag_single_object(self):
         """Test building DAG with single object."""
         obj_id = generate_object_id()
-        register_traced_object(obj_id, "dataset", {"name": "data"})
+        register_traced_object(obj_id, "dataset", "callable", {"name": "data"})
 
         dag = build_dag()
 
@@ -44,12 +44,13 @@ class TestDAGBuilding:
         dataset_id = generate_object_id()
         model_id = generate_object_id()
 
-        register_traced_object(dataset_id, "dataset", {"name": "data"})
+        register_traced_object(dataset_id, "dataset", "callable", {"name": "data"})
         register_traced_object(
             model_id,
             "model",
+            "callable",
             {"lr": 0.001},
-            dependencies=[dataset_id],
+            dependencies={"dataset": dataset_id},
         )
 
         dag = build_dag()
@@ -63,18 +64,20 @@ class TestDAGBuilding:
         model_id = generate_object_id()
         eval_id = generate_object_id()
 
-        register_traced_object(dataset_id, "dataset", {"name": "data"})
+        register_traced_object(dataset_id, "dataset", "callable", {"name": "data"})
         register_traced_object(
             model_id,
             "model",
+            "callable",
             {"lr": 0.001},
-            dependencies=[dataset_id],
+            dependencies={"dataset": dataset_id},
         )
         register_traced_object(
             eval_id,
             "evaluation",
+            "callable",
             {"metric": "accuracy"},
-            dependencies=[model_id],
+            dependencies={"model": model_id},
         )
 
         dag = build_dag()
@@ -94,7 +97,7 @@ class TestRecursiveDependencies:
     def test_get_dependencies_recursive_no_deps(self):
         """Test getting recursive dependencies for object with no deps."""
         obj_id = generate_object_id()
-        register_traced_object(obj_id, "dataset", {})
+        register_traced_object(obj_id, "dataset", "callable", {})
 
         deps = get_dependencies_recursive(obj_id)
 
@@ -105,12 +108,13 @@ class TestRecursiveDependencies:
         dataset_id = generate_object_id()
         model_id = generate_object_id()
 
-        register_traced_object(dataset_id, "dataset", {})
+        register_traced_object(dataset_id, "dataset", "callable", {})
         register_traced_object(
             model_id,
             "model",
+            "callable",
             {},
-            dependencies=[dataset_id],
+            dependencies={"dataset": dataset_id},
         )
 
         deps = get_dependencies_recursive(model_id)
@@ -123,18 +127,20 @@ class TestRecursiveDependencies:
         model_id = generate_object_id()
         eval_id = generate_object_id()
 
-        register_traced_object(dataset_id, "dataset", {})
+        register_traced_object(dataset_id, "dataset", "callable", {})
         register_traced_object(
             model_id,
             "model",
+            "callable",
             {},
-            dependencies=[dataset_id],
+            dependencies={"dataset": dataset_id},
         )
         register_traced_object(
             eval_id,
             "evaluation",
+            "callable",
             {},
-            dependencies=[model_id],
+            dependencies={"model": model_id},
         )
 
         deps = get_dependencies_recursive(eval_id)
@@ -150,14 +156,15 @@ class TestRecursiveDependencies:
         model_b_id = generate_object_id()
         eval_id = generate_object_id()
 
-        register_traced_object(dataset_id, "dataset", {})
-        register_traced_object(model_a_id, "model", {}, dependencies=[dataset_id])
-        register_traced_object(model_b_id, "model", {}, dependencies=[dataset_id])
+        register_traced_object(dataset_id, "dataset", "callable", {})
+        register_traced_object(model_a_id, "model", "callable", {}, dependencies={"dataset": dataset_id})
+        register_traced_object(model_b_id, "model", "callable", {}, dependencies={"dataset": dataset_id})
         register_traced_object(
             eval_id,
             "evaluation",
+            "callable",
             {},
-            dependencies=[model_a_id, model_b_id],
+            dependencies={"model_a": model_a_id, "model_b": model_b_id},
         )
 
         deps = get_dependencies_recursive(eval_id)
@@ -179,18 +186,20 @@ class TestCircularDependencyDetection:
         model_id = generate_object_id()
         eval_id = generate_object_id()
 
-        register_traced_object(dataset_id, "dataset", {})
+        register_traced_object(dataset_id, "dataset", "callable", {})
         register_traced_object(
             model_id,
             "model",
+            "callable",
             {},
-            dependencies=[dataset_id],
+            dependencies={"dataset": dataset_id},
         )
         register_traced_object(
             eval_id,
             "evaluation",
+            "callable",
             {},
-            dependencies=[model_id],
+            dependencies={"model": model_id},
         )
 
         # Should raise no errors
@@ -200,7 +209,7 @@ class TestCircularDependencyDetection:
     def test_self_loop_circular_dependency(self):
         """Test detection of self-loop circular dependency."""
         obj_id = generate_object_id()
-        register_traced_object(obj_id, "object", {}, dependencies=[obj_id])
+        register_traced_object(obj_id, "object", "callable", {}, dependencies={"self": obj_id})
 
         has_circular = detect_circular_dependencies()
         assert has_circular is True
@@ -210,8 +219,8 @@ class TestCircularDependencyDetection:
         obj_a_id = generate_object_id()
         obj_b_id = generate_object_id()
 
-        register_traced_object(obj_a_id, "object", {}, dependencies=[obj_b_id])
-        register_traced_object(obj_b_id, "object", {}, dependencies=[obj_a_id])
+        register_traced_object(obj_a_id, "object", "callable", {}, dependencies={"b": obj_b_id})
+        register_traced_object(obj_b_id, "object", "callable", {}, dependencies={"a": obj_a_id})
 
         has_circular = detect_circular_dependencies()
         assert has_circular is True
@@ -222,9 +231,9 @@ class TestCircularDependencyDetection:
         obj_b_id = generate_object_id()
         obj_c_id = generate_object_id()
 
-        register_traced_object(obj_a_id, "object", {}, dependencies=[obj_b_id])
-        register_traced_object(obj_b_id, "object", {}, dependencies=[obj_c_id])
-        register_traced_object(obj_c_id, "object", {}, dependencies=[obj_a_id])
+        register_traced_object(obj_a_id, "object", "callable", {}, dependencies={"b": obj_b_id})
+        register_traced_object(obj_b_id, "object", "callable", {}, dependencies={"c": obj_c_id})
+        register_traced_object(obj_c_id, "object", "callable", {}, dependencies={"a": obj_a_id})
 
         has_circular = detect_circular_dependencies()
         assert has_circular is True
@@ -242,12 +251,13 @@ class TestDAGExport:
         dataset_id = generate_object_id()
         model_id = generate_object_id()
 
-        register_traced_object(dataset_id, "dataset", {"path": "/data"})
+        register_traced_object(dataset_id, "dataset", "callable", {"path": "/data"})
         register_traced_object(
             model_id,
             "model",
+            "callable",
             {"lr": 0.001},
-            dependencies=[dataset_id],
+            dependencies={"dataset": dataset_id},
         )
 
         exported = export_dag()
@@ -259,7 +269,7 @@ class TestDAGExport:
     def test_export_dag_includes_metadata(self):
         """Test that exported DAG includes type and dependencies."""
         obj_id = generate_object_id()
-        register_traced_object(obj_id, "dataset", {"name": "data"})
+        register_traced_object(obj_id, "dataset", "callable", {"name": "data"})
 
         exported = export_dag()
 
@@ -275,24 +285,27 @@ class TestDAGExport:
         model_id = generate_object_id()
         eval_id = generate_object_id()
 
-        register_traced_object(dataset_id, "dataset", {"split": "train"})
+        register_traced_object(dataset_id, "dataset", "callable", {"split": "train"})
         register_traced_object(
             preprocess_id,
             "dataset",
+            "callable",
             {"method": "normalize"},
-            dependencies=[dataset_id],
+            dependencies={"dataset": dataset_id},
         )
         register_traced_object(
             model_id,
             "model",
+            "callable",
             {"arch": "bert"},
-            dependencies=[preprocess_id],
+            dependencies={"preprocess": preprocess_id},
         )
         register_traced_object(
             eval_id,
             "evaluation",
+            "callable",
             {"metric": "f1"},
-            dependencies=[model_id],
+            dependencies={"model": model_id},
         )
 
         exported = export_dag()

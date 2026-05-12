@@ -28,7 +28,7 @@ class TestGenericTracedDecorator:
         clear_traced_registry()
         reset_backend()
         temp_dir = tempfile.mkdtemp()
-        backend = PickleBackend(directory=temp_dir)
+        backend = PickleBackend(directory=temp_dir, recording_enabled=True)
         set_backend(backend)
         yield
         shutil.rmtree(temp_dir)
@@ -75,15 +75,8 @@ class TestGenericTracedDecorator:
         def create_with_loader(name: str, loader_obj):
             return {"name": name}
 
-        create_with_loader(name="data", loader_obj=loader)
-
-        registry = __import__("research_pipelines.core", fromlist=["get_traced_registry"]).get_traced_registry()
-        obj_id = list(registry.keys())[0]
-        obj = registry[obj_id]
-
-        # loader_obj should not be in config
-        assert "loader_obj" not in obj["config"]
-        assert "name" in obj["config"]
+        with pytest.raises(ValueError):
+            create_with_loader(name="data", loader_obj=loader)
 
     def test_traced_detects_dependencies(self):
         """Test that @traced detects other traced objects as dependencies."""
@@ -111,7 +104,7 @@ class TestGenericTracedDecorator:
         model_entry = [obj for obj in registry.values() if obj["type"] == "model"][0]
 
         # Dependencies should contain the dataset_id
-        assert dataset_id in model_entry["dependencies"]
+        assert dataset_id in model_entry["dependencies"].values()
 
     def test_traced_stores_in_backend(self):
         """Test that @traced stores config in the backend."""
@@ -184,7 +177,7 @@ class TestSpecializedDecorators:
         clear_traced_registry()
         reset_backend()
         temp_dir = tempfile.mkdtemp()
-        backend = PickleBackend(directory=temp_dir)
+        backend = PickleBackend(directory=temp_dir, recording_enabled=True)
         set_backend(backend)
         yield
         shutil.rmtree(temp_dir)
@@ -235,7 +228,7 @@ class TestDecoratorOnClassConstructor:
         clear_traced_registry()
         reset_backend()
         temp_dir = tempfile.mkdtemp()
-        backend = PickleBackend(directory=temp_dir)
+        backend = PickleBackend(directory=temp_dir, recording_enabled=True)
         set_backend(backend)
         yield
         shutil.rmtree(temp_dir)
@@ -287,7 +280,7 @@ class TestIterableReturnTracing:
         clear_traced_registry()
         reset_backend()
         temp_dir = tempfile.mkdtemp()
-        backend = PickleBackend(directory=temp_dir)
+        backend = PickleBackend(directory=temp_dir, recording_enabled=True)
         set_backend(backend)
         yield
         shutil.rmtree(temp_dir)
@@ -306,7 +299,7 @@ class TestIterableReturnTracing:
         train, val, test = get_dataset(prefix="split")
 
         registry = __import__("research_pipelines.core", fromlist=["get_traced_registry"]).get_traced_registry()
-        assert len(registry) == 3
+        assert len(registry) == 4
         assert all(entry["type"] == "dataset" for entry in registry.values())
 
         @evaluation()
@@ -329,7 +322,7 @@ class TestIgnoredArguments:
         clear_traced_registry()
         reset_backend()
         temp_dir = tempfile.mkdtemp()
-        backend = PickleBackend(directory=temp_dir)
+        backend = PickleBackend(directory=temp_dir, recording_enabled=True)
         set_backend(backend)
         yield
         shutil.rmtree(temp_dir)
@@ -386,7 +379,7 @@ class TestIgnoredArguments:
         splits = get_dataset(prefix="split")
 
         registry = __import__("research_pipelines.core", fromlist=["get_traced_registry"]).get_traced_registry()
-        assert len(registry) == 3
+        assert len(registry) == 4
         assert all(entry["type"] == "dataset" for entry in registry.values())
 
         @evaluation()

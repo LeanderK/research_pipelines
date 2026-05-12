@@ -27,7 +27,7 @@ class TestPickleBackend:
     @pytest.fixture
     def backend(self, temp_dir):
         """Create a PickleBackend instance with temporary directory."""
-        return PickleBackend(directory=temp_dir)
+        return PickleBackend(directory=temp_dir, recording_enabled=True)
 
     def test_init_creates_directory(self):
         """Test that __init__ creates the storage directory."""
@@ -49,7 +49,7 @@ class TestPickleBackend:
         config = {"name": "my_dataset", "size": 1000, "version": 1.5}
         dependencies = []
 
-        backend.log_config(object_id, config, dependencies)
+        backend.log_config(object_id, "callable", config, dependencies)
 
         result = backend.get_config(object_id)
         assert result is not None
@@ -66,8 +66,8 @@ class TestPickleBackend:
         dataset_id = "dataset_1"
         model_id = "model_1"
 
-        backend.log_config("dataset_1", {"name": "data"}, [])
-        backend.log_config("model_1", {"lr": 0.001}, [dataset_id])
+        backend.log_config("dataset_1", "callable", {"name": "data"}, [])
+        backend.log_config("model_1", "callable", {"lr": 0.001}, [dataset_id])
 
         model_config = backend.get_config(model_id)
         assert model_config["dependencies"] == [dataset_id]
@@ -79,9 +79,9 @@ class TestPickleBackend:
 
     def test_load_all_multiple_configs(self, backend):
         """Test load_all with multiple configurations."""
-        backend.log_config("obj1", {"x": 1}, [])
-        backend.log_config("obj2", {"y": 2}, ["obj1"])
-        backend.log_config("obj3", {"z": 3}, ["obj1", "obj2"])
+        backend.log_config("obj1", "callable", {"x": 1}, [])
+        backend.log_config("obj2", "callable", {"y": 2}, ["obj1"])
+        backend.log_config("obj3", "callable", {"z": 3}, ["obj1", "obj2"])
 
         result = backend.load_all()
         assert len(result) == 3
@@ -93,8 +93,8 @@ class TestPickleBackend:
 
     def test_clear(self, backend):
         """Test clearing all configurations."""
-        backend.log_config("obj1", {"x": 1}, [])
-        backend.log_config("obj2", {"y": 2}, [])
+        backend.log_config("obj1", "callable", {"x": 1}, [])
+        backend.log_config("obj2", "callable", {"y": 2}, [])
         assert len(backend.load_all()) == 2
 
         backend.clear()
@@ -112,7 +112,7 @@ class TestPickleBackend:
             "list": [1, "two", 3.0],
             "dict": {"nested": "value"},
         }
-        backend.log_config("test_id", config, [])
+        backend.log_config("test_id", "callable", config, [])
 
         result = backend.get_config("test_id")
         assert result["config"] == config
@@ -121,7 +121,7 @@ class TestPickleBackend:
         """Test that special characters in object_id are sanitized for filenames."""
         # Object IDs with special characters should be sanitized
         object_id = "uuid-like/id\\with:special-chars"
-        backend.log_config(object_id, {"data": "test"}, [])
+        backend.log_config(object_id, "callable", {"data": "test"}, [])
 
         result = backend.get_config(object_id)
         assert result is not None
@@ -154,11 +154,16 @@ class TestPickleBackend:
 class TestBackendManager:
     """Tests for backend manager (global state)."""
 
+    @pytest.fixture(autouse=True)
+    def fake_wandb(self, monkeypatch):
+        """Provide a stub wandb module so get_backend can instantiate WandBBackend."""
+        monkeypatch.setitem(sys.modules, "wandb", types.SimpleNamespace(run=None))
+
     def test_get_backend_default(self):
-        """Test that get_backend returns default PickleBackend."""
+        """Test that get_backend returns the default WandBBackend when wandb is available."""
         reset_backend()
         backend = get_backend()
-        assert isinstance(backend, PickleBackend)
+        assert isinstance(backend, WandBBackend)
 
     def test_set_backend(self):
         """Test setting a custom backend."""
