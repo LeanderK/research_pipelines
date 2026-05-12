@@ -330,7 +330,7 @@ class ArgsTuple(tuple, Generic[T]):
 
 
 def build_arguments(
-    to_build: Callable[[*Ts], Any],
+    target: Callable[[*Ts], Any],
     manual_kwargs: Optional[dict[str, Any]] = None,
     backend: Optional[base.Backend] = None,
     manual_import_translation: Optional[dict[str, str]] = None,
@@ -344,7 +344,7 @@ def build_arguments(
     before instantiating the object.
 
     Args:
-        to_build: The callable to build arguments for
+        target: The callable to build arguments for
         backend: The backend to retrieve configurations from
         manual_kwargs: Optional dictionary of arguments to override traced config values
         manual_import_translation: Optional dictionary to translate module names in callables
@@ -357,11 +357,11 @@ def build_arguments(
         backend = get_backend()
 
     config_id, config, configs = _prepare_for_build(
-        to_build, backend, manual_kwargs, manual_import_translation
+        target, backend, manual_kwargs, manual_import_translation
     )
 
     kwargs = build_arguments_kwargs(
-        to_build, manual_kwargs, backend, manual_import_translation, persistent_cache
+        target, manual_kwargs, backend, manual_import_translation, persistent_cache
     )
 
     func, selection = _get_function_from_callable_str(

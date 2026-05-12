@@ -15,8 +15,9 @@ It turns a huge, messy notebook into something simple like:
 ```python
 # (no pictured: select a traced run and load its saved configurations)
 # rebuild the arguments such that we can call evaluate ourselves
+# no pickel!
 model_obj, metric = query.build_arguments(
-    evaluate
+    target=evaluate
 )
 # load saved weights
 model_obj.load_state_dict(state_dict)
