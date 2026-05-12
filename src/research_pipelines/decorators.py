@@ -7,6 +7,10 @@ import pathlib
 import sys
 from typing import Any, Callable, Dict, Iterable, Optional, Set
 
+import inspect
+import pathlib
+import sys
+
 from research_pipelines.core import (
     filter_arguments,
     generate_object_id,
@@ -16,6 +20,7 @@ from research_pipelines.core import (
     extract_ignored_args_from_signature,
 )
 from research_pipelines.backends.manager import get_backend
+import research_pipelines.dag as dag_tools
 
 # Global mapping of returned objects to their traced object IDs
 # This allows us to detect when a traced object is used as a dependency
@@ -61,11 +66,7 @@ def _find_traced_dependencies(args: Dict[str, Any]) -> Dict[str, str]:
 
     return dependencies
 
-import inspect
-import pathlib
-import sys
-
-def stable_qualname(obj):
+def _stable_qualname(obj):
     module = inspect.getmodule(obj)
 
     # --- Case 1: normal import ---
@@ -109,6 +110,24 @@ def stable_qualname(obj):
 
     return f"{module_name}:{obj.__qualname__}"
 
+def _sanity_check_dag(my_id: str) -> None:
+    """Check for cycles in the DAG of traced objects."""
+    dag = dag_tools.build_dag()
+    if dag_tools.detect_circular_dependencies(dag):
+        raise ValueError(f"Circular dependency detected in DAG after tracing object {my_id}. DAG: {dag}")
+    # nothing should depend on training as it might
+    # lead to accidentially starting the training again when rebuilding a traced object
+    leaves = dag_tools.get_leaf_objects(dag)
+    # if we find a training object that is not a leaf
+    # it means something depends on it, which is not allowed
+    for k,v in dag.items():
+        if v["type"] == "training" and k not in leaves:
+            error_msg = f"""
+            Traced training object {k} is not a leaf in the DAG, which means something depends on it. 
+            This is not allowed as it might lead to accidentially starting the training again when 
+            rebuilding a traced object. DAG: {dag}
+            """
+            raise ValueError(error_msg)
 
 def traced(traced_type: str = "object", ignore_args: Optional[Iterable[str]] = None) -> Callable:
     """
@@ -139,7 +158,7 @@ def traced(traced_type: str = "object", ignore_args: Optional[Iterable[str]] = N
 
         is_class = inspect.isclass(func_or_class)
 
-        qualname = stable_qualname(func_or_class)
+        qualname = _stable_qualname(func_or_class)
         # print(f"Decorating {qualname} as traced {traced_type} with ignored args: {ignored_names}")
 
         if is_class:
@@ -165,12 +184,15 @@ def traced(traced_type: str = "object", ignore_args: Optional[Iterable[str]] = N
                 result = original_init(self, *args, **kwargs)
 
                 # Now log the trace
-                _trace_return_value(
+                object_id = _trace_return_value(
                     traced_type=traced_type,
                     call_args=call_args,
                     return_value=self,
                     callable=qualname
                 )
+
+                if object_id:
+                    _sanity_check_dag(object_id)
 
                 return result
 
@@ -197,12 +219,15 @@ def traced(traced_type: str = "object", ignore_args: Optional[Iterable[str]] = N
                 result = func_or_class(*args, **kwargs)
 
                 # Log the trace
-                _trace_return_value(
+                object_id = _trace_return_value(
                     traced_type=traced_type,
                     call_args=call_args,
                     return_value=result,
                     callable=qualname
                 )
+
+                if object_id:
+                    _sanity_check_dag(object_id)
 
                 return result
 
@@ -217,7 +242,7 @@ def _trace_return_value(
     return_value: Any,
     callable: str,
     parent_id: Optional[str] = None,
-) -> None:
+) -> Optional[str]:
     """Trace a return value, recursively handling tuples and lists."""
     # if is_basic_type(return_value):
     #     return
@@ -231,19 +256,20 @@ def _trace_return_value(
     )
 
     if not object_id:
-        return
+        return None
 
     if isinstance(return_value, list):
         for i, item in enumerate(return_value):
             callable_item = f"{callable}[{i}]"
             _trace_return_value(traced_type, {}, item, callable=callable_item, parent_id=object_id)
-        return
+        return object_id
 
     if isinstance(return_value, tuple):
         for i, item in enumerate(return_value):
             callable_item = f"{callable}[{i}]"
             _trace_return_value(traced_type, {}, item, callable=callable_item, parent_id=object_id)
-        return
+        return object_id
+    return object_id
 
 
 def _log_trace(

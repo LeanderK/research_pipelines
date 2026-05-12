@@ -3,9 +3,20 @@
 import sys
 import uuid
 from typing import Any, Dict, List, Optional, Set, Tuple, get_args, get_origin, get_type_hints
+import builtins
 
-# Global registry of traced objects (in-memory, separate from backend)
-_traced_registry: Dict[str, Dict[str, Any]] = {}
+# Global registry of traced objects (in-memory, separate from backend).
+# Store it on `builtins` so different import paths share the same process-wide
+# singleton (avoids duplicate module instances creating separate registries).
+_TRACED_REGISTRY_KEY = "_research_pipelines_traced_registry"
+
+
+def _get_registry() -> Dict[str, Dict[str, Any]]:
+    reg = getattr(builtins, _TRACED_REGISTRY_KEY, None)
+    if reg is None:
+        reg = {}
+        setattr(builtins, _TRACED_REGISTRY_KEY, reg)
+    return reg
 
 
 class IgnoreArg:
@@ -181,7 +192,7 @@ def register_traced_object(
     if dependencies is None:
         dependencies = {}
 
-    _traced_registry[object_id] = {
+    _get_registry()[object_id] = {
         "id": object_id,
         "type": object_type,
         "callable": callable,
@@ -201,7 +212,7 @@ def get_traced_object(object_id: str) -> Optional[Dict[str, Any]]:
     Returns:
         The traced object metadata, or None if not found
     """
-    return _traced_registry.get(object_id)
+    return _get_registry().get(object_id)
 
 
 def get_traced_registry() -> Dict[str, Dict[str, Any]]:
@@ -211,10 +222,9 @@ def get_traced_registry() -> Dict[str, Dict[str, Any]]:
     Returns:
         Dictionary mapping object_ids to their metadata
     """
-    return dict(_traced_registry)
+    return dict(_get_registry())
 
 
 def clear_traced_registry() -> None:
     """Clear all entries from the traced object registry."""
-    global _traced_registry
-    _traced_registry = {}
+    setattr(builtins, _TRACED_REGISTRY_KEY, {})

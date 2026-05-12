@@ -1,6 +1,6 @@
 """DAG utilities for analyzing and exporting traced dependencies."""
 
-from typing import Any, Dict, Set
+from typing import Any, Dict, Optional, Set
 
 from research_pipelines.core import get_traced_registry
 
@@ -16,11 +16,14 @@ def build_dag() -> Dict[str, Dict[str, Any]]:
     dag = {}
 
     for obj_id, obj_info in registry.items():
+        dependencies = set(obj_info.get("dependencies", {}).values())
+        if 'parent_id' in obj_info and obj_info['parent_id'] is not None:
+            dependencies.add(obj_info['parent_id'])
         dag[obj_id] = {
             "id": obj_id,
             "type": obj_info["type"],
             "config": obj_info["config"],
-            "dependencies": obj_info.get("dependencies", []),
+            "dependencies": list(dependencies),
         }
 
     return dag
@@ -62,7 +65,9 @@ def get_dependencies_recursive(object_id: str) -> Set[str]:
     return visited
 
 
-def detect_circular_dependencies() -> bool:
+def detect_circular_dependencies(
+    dag: Optional[Dict[str, Dict[str, Any]]] = None
+) -> bool:
     """
     Detect if there are any circular dependencies in the DAG.
 
@@ -71,7 +76,8 @@ def detect_circular_dependencies() -> bool:
     Returns:
         True if any circular dependencies are found, False otherwise
     """
-    dag = build_dag()
+    if dag is None:
+        dag = build_dag()
 
     # For each node, track: white (unvisited), gray (visiting), black (visited)
     color = {obj_id: "white" for obj_id in dag}
@@ -113,25 +119,29 @@ def export_dag() -> Dict[str, Dict[str, Any]]:
     return build_dag()
 
 
-def get_root_objects() -> Set[str]:
+def get_root_objects(dag: Optional[Dict[str, Dict[str, Any]]] = None) -> Set[str]:
     """
     Get all root objects (objects with no dependencies).
 
     Returns:
         Set of object_ids that have no dependencies
     """
-    dag = build_dag()
+    if dag is None:
+        dag = build_dag()
     return {obj_id for obj_id, node in dag.items() if not node["dependencies"]}
 
 
-def get_leaf_objects() -> Set[str]:
+def get_leaf_objects(
+    dag: Optional[Dict[str, Dict[str, Any]]] = None
+) -> Set[str]:
     """
     Get all leaf objects (objects that nothing depends on).
 
     Returns:
         Set of object_ids that are not dependencies of any other object
     """
-    dag = build_dag()
+    if dag is None:
+        dag = build_dag()
 
     # Collect all objects that are dependencies
     depended_upon = set()
@@ -142,7 +152,7 @@ def get_leaf_objects() -> Set[str]:
     return set(dag.keys()) - depended_upon
 
 
-def get_objects_by_type(object_type: str) -> Set[str]:
+def get_objects_by_type(object_type: str, dag: Optional[Dict[str, Dict[str, Any]]] = None) -> Set[str]:
     """
     Get all objects of a specific type.
 
@@ -152,11 +162,12 @@ def get_objects_by_type(object_type: str) -> Set[str]:
     Returns:
         Set of object_ids with that type
     """
-    dag = build_dag()
+    if dag is None:
+        dag = build_dag()
     return {obj_id for obj_id, node in dag.items() if node["type"] == object_type}
 
 
-def get_dependents(object_id: str) -> Set[str]:
+def get_dependents(object_id: str, dag: Optional[Dict[str, Dict[str, Any]]] = None) -> Set[str]:
     """
     Get all objects that depend on the given object (direct dependents).
 
@@ -166,7 +177,8 @@ def get_dependents(object_id: str) -> Set[str]:
     Returns:
         Set of object_ids that directly depend on the given object
     """
-    dag = build_dag()
+    if dag is None:
+        dag = build_dag()
     dependents = set()
 
     for obj_id, node in dag.items():
