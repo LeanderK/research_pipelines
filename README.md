@@ -5,15 +5,24 @@ A lightweight Python framework for tracing the components of research experiment
 
 Just decorate function during training like this, which automatically records the value of the arguments:
 ```python
+from research_pipelines.decorators import evaluation
+
 @evaluation()
 def evaluate(model_obj, test_set, full_evaluation=False):
-    return ...
+    return {"score": 0.0}
 ```
 
 It turns a huge, messy notebook into something simple like:
 
 ```python
-# (no pictured: select a traced run and load its saved configurations)
+from examples.readme_helpers import build_model, evaluate, load_data, state_dict
+import research_pipelines.query as query
+
+# Trace a tiny run so the rebuild example has something to load.
+train_set = load_data(path="/data/train.csv", split="train")
+model = build_model(architecture="bert")
+evaluate(model, train_set)
+
 # rebuild the arguments such that we can call evaluate ourselves
 # no pickle!
 model_obj, test_set, _ = query.build_arguments(
@@ -49,7 +58,7 @@ Compare the example in `./examples`. We first trace a run in `examples/simple_pi
 ## Quick Start
 
 ```python
-from research_pipelines.decorators import dataset, model, evaluation
+from research_pipelines.decorators import dataset, model, evaluation, training
 from research_pipelines.dag import build_dag
 
 # Decorate your functions
@@ -61,7 +70,7 @@ def load_data(path: str, split: str):
 @model()
 def build_model(architecture: str):
     # Basic args (architecture) become config
-    return trained_model
+    return {"architecture": architecture}
 
 @training()
 def train_model(train_data, model, lr: float, epochs: int):
@@ -78,7 +87,6 @@ def evaluate(model_obj, metric: str):
 # Execute your pipeline
 data = load_data(path="/data/train.csv", split="train")
 model = build_model(architecture="bert")
-train_model(data, model)
 results = evaluate(model_obj=model, metric="accuracy")
 ```
 
@@ -86,7 +94,16 @@ results = evaluate(model_obj=model, metric="accuracy")
 The traced objects are not pickled, instead the arguments the functions are called with are saved.
 
 ```python
+from examples.readme_helpers import build_model, evaluate, load_data, setup_readme_backend, state_dict
+from research_pipelines.backends.manager import get_backend
 import research_pipelines.query as query
+
+# Trace a tiny run so the rebuild example has something to load.
+train_set = load_data(path="/data/train.csv", split="train")
+model = build_model(architecture="bert")
+evaluate(model, train_set)
+
+get_backend().set_recording_enabled(False)
 
 # we can now easily call the functions with the recorded arguments via build(fn_to_call)
 dataset = query.build(
@@ -94,11 +111,12 @@ dataset = query.build(
 )
 
 # or just get the arguments such that we can call it ourselves
-model_obj, metric = query.build_arguments(
-    evaluate
+model_obj, test_set, _ = query.build_arguments(
+    target=evaluate
 )
 model_obj.load_state_dict(state_dict)
-evaluate(model_obj, metric)
+evaluate(model_obj, test_set, full_evaluation=True)
+```
 
 ### Tagging traced calls
 
@@ -107,13 +125,18 @@ If you call the same function multiple times with different arguments (e.g., eva
 ```python
 from research_pipelines.decorators import tag
 import research_pipelines.query as query
+from research_pipelines.backends.manager import get_backend
+
+get_backend().set_recording_enabled(True)
 
 # Trace the same function with different tags
 with tag("final-validation"):
-    val_score = evaluate(model=model, dataset=validation_dataset)
+    val_score = evaluate(model, train_set)
 
 with tag("final-test"):
-    test_score = evaluate(model=model, dataset=test_dataset)
+    test_score = evaluate(model, train_set)
+
+get_backend().set_recording_enabled(False)
 
 # Rebuild the validation evaluation specifically
 val_result = query.build(evaluate, tag="final-validation")
@@ -124,7 +147,7 @@ test_result = query.build_by_tag("final-test")
 # Tags can also be nested - they accumulate
 with tag("experiment-1"):
     with tag("phase-1"):
-        result = evaluate(model=model, dataset=data)
+        result = evaluate(model, train_set)
         # This traced call has tags: ["experiment-1", "phase-1"]
 ```
 
@@ -209,15 +232,18 @@ set_backend(backend)
 
 **WandBBackend** (for wandb integration):
 ```python
-import wandb
-from research_pipelines.backends.wandb_backend import WandBBackend
-from research_pipelines.backends.manager import set_backend
+try:
+    import wandb
+    from research_pipelines.backends.wandb_backend import WandBBackend
+    from research_pipelines.backends.manager import set_backend
 
-wandb.init(project="my_project")
-backend = WandBBackend()
-set_backend(backend)
+    wandb.init(project="my_project")
+    backend = WandBBackend()
+    set_backend(backend)
 
-# Configs are automatically logged to wandb.run.config
+    # Configs are automatically logged to wandb.run.config
+except ImportError:
+    print("wandb not installed; skipping WandBBackend example")
 ```
 
 ## API Reference
@@ -228,24 +254,24 @@ set_backend(backend)
 from research_pipelines.decorators import dataset, model, evaluation, traced
 
 @dataset()
-def load_data(...):
+def load_data():
     """Traces a dataset creation function/class."""
-    pass
+    return {"ok": True}
 
 @model()
-def train(...):
+def train():
     """Traces a model creation function/class."""
-    pass
+    return {"trained": True}
 
 @evaluation()
-def eval(...):
+def eval():
     """Traces an evaluation function/class."""
-    pass
+    return {"score": 0.0}
 
 @traced(traced_type="custom")
-def my_function(...):
+def my_function():
     """Generic tracer with custom type."""
-    pass
+    return None
 ```
 
 ### DAG Operations
@@ -264,40 +290,45 @@ from research_pipelines.dag import (
 
 # Build full DAG
 dag = build_dag()
+if dag:
+    object_id = next(iter(dag))
 
-# Get all transitive dependencies
-deps = get_dependencies_recursive(object_id)
+    # Get all transitive dependencies
+    deps = get_dependencies_recursive(object_id)
 
-# Check for cycles
-has_cycles = detect_circular_dependencies()
+    # Check for cycles
+    has_cycles = detect_circular_dependencies()
 
-# Export for serialization
-dag_export = export_dag()
+    # Export for serialization
+    dag_export = export_dag()
 
-# Find roots (datasets with no dependencies)
-roots = get_root_objects()
+    # Find roots (datasets with no dependencies)
+    roots = get_root_objects()
 
-# Find leaves (objects nothing depends on)
-leaves = get_leaf_objects()
+    # Find leaves (objects nothing depends on)
+    leaves = get_leaf_objects()
 
-# Filter by type
-datasets = get_objects_by_type("dataset")
-models = get_objects_by_type("model")
+    # Filter by type
+    datasets = get_objects_by_type("dataset")
+    models = get_objects_by_type("model")
 
-# Find what depends on an object
-dependents = get_dependents(object_id)
+    # Find what depends on an object
+    dependents = get_dependents(object_id)
 ```
 
 ### Backends
 
 ```python
+from abc import ABC
+
 from research_pipelines.backends.manager import get_backend, set_backend
 
 # Get active backend
-backend = get_backend()
+backend = get_backend(no_error=True)
 
 # Set custom backend
-set_backend(my_backend)
+if backend is not None:
+    set_backend(backend)
 
 # Backend interface
 class Backend(ABC):
@@ -325,7 +356,7 @@ Configurations are stored as dictionaries with the following structure:
 ```python
 {
     "object_id_1": {
-        "callable": "examples.simple_pipeline:load_dataset"
+        "callable": "examples.simple_pipeline:load_dataset",
         "config": {
             "path": "/data/train.csv",
             "split": "train",
@@ -334,7 +365,7 @@ Configurations are stored as dictionaries with the following structure:
         "dependencies": [],
     },
     "object_id_2": {
-        "callable": "examples.simple_pipeline:create_model"
+        "callable": "examples.simple_pipeline:create_model",
         "config": {
             "architecture": "bert",
             "learning_rate": 0.001,
