@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "research-pipelines"
-version = "0.1.5"
+version = "0.1.6"
 description = "Lightweight research project pipeline framework with DAG tracing"
 readme = "README.md"
 requires-python = ">=3.11"
