@@ -198,7 +198,7 @@ def _prepare_for_build(
         # Multiple configs but no tag specified - error to force disambiguation
         raise ValueError(
             f"Multiple configurations found for {callable_str}, cannot disambiguate. "
-            f"Please specify a tag using query.build(target, tag=...) to disambiguate, "
+            f"In case there's a tag, please specify a tag using query.build(target, tag=...) to disambiguate, "
             f"or use query.build_by_tag(tag) to query by tag instead."
         )
     
@@ -246,8 +246,12 @@ def _build_recursive(
         object_cache[object_id] = my_object
         return my_object
     else:
-        for dep_id in config["dependencies"].values():
+        for name, dep_id in config["dependencies"].items():
             if dep_id not in object_cache:
+                if dep_id not in configs:
+                    raise ValueError(
+                        f"Dependency {dep_id} not found for argument {name} of {config['callable']}."
+                    )
                 dep_config = configs[dep_id]
                 _build_recursive(
                     dep_id,
@@ -333,8 +337,12 @@ def build_arguments_kwargs(
     )
 
     dependency_objects = {}
-    for dep_id in config["dependencies"].values():
+    for name, dep_id in config["dependencies"].items():
         if dep_id not in object_cache:
+            if dep_id not in configs:
+                raise ValueError(
+                    f"Dependency {dep_id} not found for argument {name} of {config['callable']}."
+                )
             dep_config = configs[dep_id]
             _build_recursive(
                 dep_id,
@@ -565,8 +573,12 @@ def build_arguments_by_tag(
     )
 
     dependency_objects = {}
-    for dep_id in config["dependencies"].values():
+    for name, dep_id in config["dependencies"].items():
         if dep_id not in object_cache:
+            if dep_id not in configs:
+                raise ValueError(
+                    f"Dependency {dep_id} not found for argument {name} of {config['callable']}."
+                )
             dep_config = configs[dep_id]
             _build_recursive(
                 dep_id,

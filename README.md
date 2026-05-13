@@ -6,22 +6,22 @@ A lightweight Python framework for tracing the components of research experiment
 Just decorate function during training like this, which automatically records the value of the arguments:
 ```python
 from research_pipelines.decorators import evaluation
+from examples.readme_helpers import build_model, evaluate, load_data, state_dict
 
 @evaluation()
 def evaluate(model_obj, test_set, full_evaluation=False):
     return {"score": 0.0}
-```
-
-It turns a huge, messy notebook into something simple like:
-
-```python
-from examples.readme_helpers import build_model, evaluate, load_data, state_dict
-import research_pipelines.query as query
 
 # Trace a tiny run so the rebuild example has something to load.
 train_set = load_data(path="/data/train.csv", split="train")
 model = build_model(architecture="bert")
 evaluate(model, train_set)
+```
+
+It turns a huge, messy notebook into something simple like:
+
+```python
+import research_pipelines.query as query
 
 # rebuild the arguments such that we can call evaluate ourselves
 # no pickle!
@@ -97,6 +97,8 @@ The traced objects are not pickled, instead the arguments the functions are call
 from examples.readme_helpers import build_model, evaluate, load_data, setup_readme_backend, state_dict
 from research_pipelines.backends.manager import get_backend
 import research_pipelines.query as query
+get_backend().clear()
+get_backend().set_recording_enabled(True)
 
 # Trace a tiny run so the rebuild example has something to load.
 train_set = load_data(path="/data/train.csv", split="train")
@@ -126,9 +128,10 @@ If you call the same function multiple times with different arguments (e.g., eva
 from research_pipelines.decorators import tag
 import research_pipelines.query as query
 from research_pipelines.backends.manager import get_backend
-
 get_backend().set_recording_enabled(True)
 
+train_set = load_data(path="/data/train.csv", split="train")
+model = build_model(architecture="bert")
 # Trace the same function with different tags
 with tag("final-validation"):
     val_score = evaluate(model, train_set)
@@ -138,6 +141,7 @@ with tag("final-test"):
 
 get_backend().set_recording_enabled(False)
 
+# later in the notebook
 # Rebuild the validation evaluation specifically
 val_result = query.build(evaluate, tag="final-validation")
 
