@@ -30,6 +30,9 @@ _object_to_traced_id: Dict[int, str] = {}
 # Tracks active tags in nested contexts, allowing tags to accumulate
 _tag_stack: list[str] = []
 
+# Global disabled flag for tracing, can be used to temporarily disable tracing in certain contexts
+_tracing_disabled: bool = False
+
 
 def _mark_object_as_traced(obj: Any, traced_id: str) -> None:
     """Mark an object as traced by storing its id() -> traced_id mapping."""
@@ -44,25 +47,25 @@ def _get_traced_id_from_object(obj: Any) -> Optional[str]:
 def tag(name: str):
     """
     Context manager for tagging traced function calls.
-    
+
     Tags allow disambiguating multiple calls to the same function by associating
     them with a string label. Tags accumulate in nested contexts.
-    
+
     Example:
         with tag("final-validation"):
             result = traced_evaluate_fn(model, val_dataset)
-        
+
         # Later, reconstruct by tag
         val_result = query.build(traced_evaluate_fn, tag="final-validation")
-    
+
     Args:
         name: String tag to associate with traced calls in this context
-        
+
     Yields:
         None
     """
     import contextlib
-    
+
     @contextlib.contextmanager
     def tag_context():
         global _tag_stack
@@ -71,14 +74,50 @@ def tag(name: str):
             yield
         finally:
             _tag_stack.pop()
-    
+
     return tag_context()
+
+def no_tracing():
+    """
+    Context manager to temporarily disable tracing.
+
+    This can be useful to avoid tracing certain calls that are not relevant or that
+    would cause issues if traced (e.g., calls that create non-serializable objects).
+
+    Example:
+        with no_tracing():
+            # This call will not be traced
+            obj = create_non_serializable_object()
+
+    Args:
+        None
+
+    Yields:
+        None
+    """
+    import contextlib
+
+    @contextlib.contextmanager
+    def no_tracing_context():
+        global _tracing_disabled
+        _tracing_disabled = True
+        try:
+            yield
+        finally:
+            _tracing_disabled = False
+
+    return no_tracing_context()
 
 
 def _get_current_tags() -> list[str]:
     """Get a copy of the current tag stack."""
     global _tag_stack
     return list(_tag_stack)
+
+def _is_tracing_enabled() -> bool:
+    """Check if tracing is currently enabled (not globally disabled)."""
+    global _tracing_disabled
+    return not _tracing_disabled
 
 
 def _find_traced_dependencies(args: Dict[str, Any]) -> Dict[str, str]:
@@ -88,7 +127,7 @@ def _find_traced_dependencies(args: Dict[str, Any]) -> Dict[str, str]:
     Returns a set of traced object IDs that are referenced in the arguments.
     """
     dependencies = {}
-    
+
     def extract_ids(name: str, value: Any) -> None:
         """Recursively extract traced IDs from a value."""
         traced_id = _get_traced_id_from_object(value)
@@ -102,13 +141,16 @@ def _find_traced_dependencies(args: Dict[str, Any]) -> Dict[str, str]:
                 extract_ids(f"{name}:t{i}", item)
         elif isinstance(value, dict):
             for k, v in value.items():
-                assert isinstance(k, str), "Only string keys are supported in argument dicts for tracing."
+                assert isinstance(
+                    k, str
+                ), "Only string keys are supported in argument dicts for tracing."
                 extract_ids(f"{name}:{k}", v)
 
     for name, value in args.items():
         extract_ids(name, value)
 
     return dependencies
+
 
 def _stable_qualname(obj):
     module = inspect.getmodule(obj)
@@ -119,8 +161,7 @@ def _stable_qualname(obj):
 
     # --- Case 2: executed as script ---
     file_path = pathlib.Path(
-        getattr(module, "__file__", None)
-        or getattr(obj, "__code__", None).co_filename
+        getattr(module, "__file__", None) or getattr(obj, "__code__", None).co_filename
     ).resolve()
 
     # --- Walk upwards to find package root (__init__.py) ---
@@ -154,17 +195,20 @@ def _stable_qualname(obj):
 
     return f"{module_name}:{obj.__qualname__}"
 
+
 def _sanity_check_dag(my_id: str) -> None:
     """Check for cycles in the DAG of traced objects."""
     dag = dag_tools.build_dag()
     if dag_tools.detect_circular_dependencies(dag):
-        raise ValueError(f"Circular dependency detected in DAG after tracing object {my_id}. DAG: {dag}")
+        raise ValueError(
+            f"Circular dependency detected in DAG after tracing object {my_id}. DAG: {dag}"
+        )
     # nothing should depend on training as it might
     # lead to accidentially starting the training again when rebuilding a traced object
     leaves = dag_tools.get_leaf_objects(dag)
     # if we find a training object that is not a leaf
     # it means something depends on it, which is not allowed
-    for k,v in dag.items():
+    for k, v in dag.items():
         if v["type"] == "training" and k not in leaves:
             error_msg = f"""
             Traced training object {k} is not a leaf in the DAG, which means something depends on it. 
@@ -173,7 +217,10 @@ def _sanity_check_dag(my_id: str) -> None:
             """
             raise ValueError(error_msg)
 
-def traced(traced_type: str = "object", ignore_args: Optional[Iterable[str]] = None) -> Callable:
+
+def traced(
+    traced_type: str = "object", ignore_args: Optional[Iterable[str]] = None
+) -> Callable:
     """
     Generic decorator for tracing callable objects (functions or classes).
 
@@ -183,11 +230,11 @@ def traced(traced_type: str = "object", ignore_args: Optional[Iterable[str]] = N
 
     Returns:
         Decorator function
-        
+
     Supports two ways to ignore arguments:
     1. Via ignore_args parameter: @dataset(ignore_args=["artifact_root"])
     2. Via IgnoreArg annotation: def func(artifact_root: IgnoreArg[str], ...):
-    
+
     Both approaches can be combined and will be merged.
     """
 
@@ -212,6 +259,10 @@ def traced(traced_type: str = "object", ignore_args: Optional[Iterable[str]] = N
             @functools.wraps(original_init)
             def new_init(self, *args, **kwargs):
                 __tracebackhide__ = True
+
+                if not _is_tracing_enabled():
+                    return original_init(self, *args, **kwargs)
+               
                 # Capture the __init__ arguments
                 sig = inspect.signature(original_init)
                 bound_args = sig.bind(self, *args, **kwargs)
@@ -232,7 +283,7 @@ def traced(traced_type: str = "object", ignore_args: Optional[Iterable[str]] = N
                     traced_type=traced_type,
                     call_args=call_args,
                     return_value=self,
-                    callable=qualname
+                    callable=qualname,
                 )
 
                 if object_id:
@@ -247,6 +298,10 @@ def traced(traced_type: str = "object", ignore_args: Optional[Iterable[str]] = N
             @functools.wraps(func_or_class)
             def wrapper(*args, **kwargs):
                 __tracebackhide__ = True
+
+                if not _is_tracing_enabled():
+                    return func_or_class(*args, **kwargs)
+
                 # Capture the function arguments
                 sig = inspect.signature(func_or_class)
                 bound_args = sig.bind(*args, **kwargs)
@@ -267,7 +322,7 @@ def traced(traced_type: str = "object", ignore_args: Optional[Iterable[str]] = N
                     traced_type=traced_type,
                     call_args=call_args,
                     return_value=result,
-                    callable=qualname
+                    callable=qualname,
                 )
 
                 if object_id:
@@ -290,7 +345,7 @@ def _trace_return_value(
     """Trace a return value, recursively handling tuples and lists."""
     # if is_basic_type(return_value):
     #     return
-    
+
     object_id = _log_trace(
         traced_type=traced_type,
         call_args=call_args,
@@ -305,13 +360,17 @@ def _trace_return_value(
     if isinstance(return_value, list):
         for i, item in enumerate(return_value):
             callable_item = f"{callable}[{i}]"
-            _trace_return_value(traced_type, {}, item, callable=callable_item, parent_id=object_id)
+            _trace_return_value(
+                traced_type, {}, item, callable=callable_item, parent_id=object_id
+            )
         return object_id
 
     if isinstance(return_value, tuple):
         for i, item in enumerate(return_value):
             callable_item = f"{callable}[{i}]"
-            _trace_return_value(traced_type, {}, item, callable=callable_item, parent_id=object_id)
+            _trace_return_value(
+                traced_type, {}, item, callable=callable_item, parent_id=object_id
+            )
         return object_id
     return object_id
 
@@ -321,7 +380,7 @@ def _log_trace(
     call_args: Dict[str, Any],
     return_value: Any,
     callable: str,
-    parent_id: Optional[str] = None
+    parent_id: Optional[str] = None,
 ) -> str:
     """
     Log a trace: register object and persist to backend.
@@ -344,16 +403,14 @@ def _log_trace(
 
     # Filter arguments
     config, non_basic = filter_arguments(call_args)
-    
+
     # Capture current tags and store separately (not in config to keep config clean)
     current_tags = _get_current_tags()
 
     # Find dependencies (traced objects used as arguments)
     dependencies = _find_traced_dependencies(call_args)
 
-    traced_args = set(
-        v.split(":")[0] for v in dependencies
-    )
+    traced_args = set(v.split(":")[0] for v in dependencies)
 
     if non_basic and not traced_args:
         raise ValueError(
@@ -370,7 +427,7 @@ def _log_trace(
         dependencies=dependencies,
         callable=callable,
         parent_id=parent_id,
-        tags=current_tags
+        tags=current_tags,
     )
 
     # Mark the returned object as traced
@@ -384,7 +441,7 @@ def _log_trace(
         object_type=traced_type,
         callable=callable,
         parent_id=parent_id,
-        tags=current_tags
+        tags=current_tags,
     )
 
     return object_id

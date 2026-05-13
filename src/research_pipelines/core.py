@@ -2,7 +2,17 @@
 
 import sys
 import uuid
-from typing import Any, Dict, List, Optional, Set, Tuple, get_args, get_origin, get_type_hints
+from typing import (
+    Any,
+    Dict,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 import builtins
 
 # Global registry of traced objects (in-memory, separate from backend).
@@ -22,11 +32,11 @@ def _get_registry() -> Dict[str, Dict[str, Any]]:
 class IgnoreArg:
     """
     Marker class for arguments that should be ignored during tracing.
-    
+
     Can be used in two ways:
     1. As a type wrapper: artifact_root: IgnoreArg[str]
     2. As an annotation marker with typing.Annotated: artifact_root: Annotated[str, Ignore()]
-    
+
     Example:
         @dataset()
         def create_splits(artifact_root: IgnoreArg[str], samples: int):
@@ -50,22 +60,23 @@ Ignore = IgnoreArg
 def _is_ignore_marker(annotation: Any) -> bool:
     """
     Check if an annotation is an IgnoreArg marker.
-    
+
     Handles both:
     - Direct IgnoreArg[T] usage
     - Annotated[T, Ignore()] usage (via get_args)
     """
     if annotation is IgnoreArg or annotation is Ignore:
         return True
-    
+
     # Check if it's IgnoreArg[T] - when we use __class_getitem__, it returns IgnoreArg
     if get_origin(annotation) is IgnoreArg:
         return True
-    
+
     # Check for Annotated[T, Ignore()] or Annotated[T, IgnoreArg()]
     if sys.version_info >= (3, 9):
         try:
             from typing import Annotated, get_args
+
             origin = get_origin(annotation)
             if origin is Annotated:
                 args = get_args(annotation)
@@ -75,23 +86,23 @@ def _is_ignore_marker(annotation: Any) -> bool:
                         return True
         except (ImportError, TypeError):
             pass
-    
+
     return False
 
 
 def extract_ignored_args_from_signature(func_or_class: Any) -> Set[str]:
     """
     Extract argument names that are marked with IgnoreArg in the function signature.
-    
+
     Args:
         func_or_class: Function or class to inspect
-        
+
     Returns:
         Set of parameter names that should be ignored
     """
     try:
         import inspect
-        
+
         # For classes, get the __init__ signature
         if inspect.isclass(func_or_class):
             sig = inspect.signature(func_or_class.__init__)
@@ -99,7 +110,7 @@ def extract_ignored_args_from_signature(func_or_class: Any) -> Set[str]:
             sig = inspect.signature(func_or_class)
 
         hints = get_type_hints(func_or_class, include_extras=True)
-        
+
         ignored = set()
         for param_name, param in sig.parameters.items():
             if param_name == "self":
@@ -110,7 +121,7 @@ def extract_ignored_args_from_signature(func_or_class: Any) -> Set[str]:
             annotation = hints.get(param_name, inspect._empty)
             if _is_ignore_marker(annotation):
                 ignored.add(param_name)
-        
+
         return ignored
     except (ValueError, TypeError):
         return set()
@@ -179,7 +190,7 @@ def register_traced_object(
     config: Dict[str, Any],
     dependencies: Optional[Dict[str, str]] = None,
     parent_id: Optional[str] = None,
-    tags: Optional[list[str]] = None
+    tags: Optional[list[str]] = None,
 ) -> None:
     """
     Register a traced object in the in-memory registry.
@@ -198,7 +209,14 @@ def register_traced_object(
     if tags is None:
         tags = []
 
-    _get_registry()[object_id] = {
+    registry = _get_registry()
+
+    if len(registry) >= 100:
+        msg = f"""Warning: Traced object registry has {len(registry)} entries.
+        This may lead to increased memory usage. Consider marking some calls as ignored to avoid memory issues."""
+        print(msg)
+
+    registry[object_id] = {
         "id": object_id,
         "type": object_type,
         "callable": callable,

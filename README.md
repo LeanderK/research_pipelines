@@ -158,6 +158,21 @@ with tag("experiment-1"):
 Tags are stored alongside traced configurations, making it easy to organize and retrieve results from complex experiments.
 
 
+## Disabling Tracing
+
+Tracing can be temporarily disabled using the `no_tracing` context:
+```python
+from research_pipelines.decorators import no_tracing
+val_set = load_data(path="/data/train.csv", split="val")
+
+for epoch in range(100):
+    # you don't want to trace this call!
+    with no_tracing():
+        val_result = evaluate(model, val_set)
+```
+
+
+
 ## Installation (Dev)
 
 ```bash
