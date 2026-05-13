@@ -130,7 +130,7 @@ def is_basic_type(value: Any) -> bool:
     """
     Check if a value is a basic serializable type.
 
-    Basic types are: str, int, float, bool, None
+    Basic types are: str, int, float, bool, None and lists/tuples of basic types.
 
     Args:
         value: The value to check
@@ -138,6 +138,8 @@ def is_basic_type(value: Any) -> bool:
     Returns:
         True if value is a basic type, False otherwise
     """
+    if isinstance(value, (tuple, list)):
+        return all(is_basic_type(v) for v in value)
     return isinstance(value, (str, int, float, bool, type(None)))
 
 

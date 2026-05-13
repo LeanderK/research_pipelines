@@ -1,7 +1,7 @@
 # Research Pipelines
 ![PyPI - Version](https://img.shields.io/pypi/v/research-pipelines)
 
-A lightweight Python framework for tracing the components of research experiments. Automatically track datasets, models, and evaluations-function arguments and function-dependencies, then persist everything to wandb or local storage. This is especially useful for plotting or further evaluation of a trained model, as we can recreate the a function call or just the arguments of a traced function. By design, it is a pickle-free solution that relies on recording primitve arguments.
+A lightweight Python framework for tracing the components of research experiments. Automatically track datasets, models, and evaluations-function arguments and function-dependencies, then persist everything to wandb or local storage. This is especially useful for plotting or further evaluation of a trained model, as we can recreate the a function call or just the arguments of a traced function. By design, it is a pickle-free solution that relies on recording primitve arguments. It does not track mutation, so we assume a more functional-stype at the top-level.
 
 Just decorate function during training like this, which automatically records the value of the arguments:
 ```python

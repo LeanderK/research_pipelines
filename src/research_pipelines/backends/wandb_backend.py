@@ -2,6 +2,7 @@
 
 import importlib
 from typing import Any, Dict, List, Optional
+import copy
 
 from research_pipelines.backends.base import Backend
 
@@ -9,7 +10,7 @@ from research_pipelines.backends.base import Backend
 class WandBBackend(Backend):
     """Backend that stores configurations in wandb.run.config."""
 
-    def __init__(self):
+    def __init__(self, run=None):
         """
         Initialize WandBBackend.
 
@@ -17,6 +18,10 @@ class WandBBackend(Backend):
         """
         try:
             self.wandb = importlib.import_module("wandb")
+            if run is not None:
+                self.run = run
+            else:
+                self.run = self.run
         except ImportError:
             raise ImportError(
                 "wandb is required for WandBBackend. "
@@ -25,7 +30,9 @@ class WandBBackend(Backend):
 
     def is_recording_enabled(self) -> bool:
         """Return whether there is an active wandb run to record into."""
-        return self.wandb.run is not None
+        if self.run is not None:
+            return isinstance(self.run, self.wandb.sdk.wandb_run.Run)
+        return False
 
     def log_config(
         self,
@@ -48,39 +55,53 @@ class WandBBackend(Backend):
             "parent_id": parent_id,
         }
 
-        self.wandb.run.config[object_id] = data
+        self.run.config[f"research_pipelines:{object_id}"] = data
+
+    def _normalize_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize by adding missing fields"""
+        config = copy.deepcopy(config)
+        if "config" not in config:
+            config["config"] = {}
+        if "dependencies" not in config:
+            config["dependencies"] = {}
+        if "parent_id" not in config:
+            config["parent_id"] = None
+        return config
 
     def get_config(self, object_id: str) -> Optional[Dict[str, Any]]:
         """Retrieve configuration for a traced object from wandb.run.config."""
-        if not self.is_recording_enabled():
-            return None
 
-        return self.wandb.run.config.get(object_id)
+        return self._normalize_config(self.run.config.get(f"research_pipelines:{object_id}"))
 
     def load_all(self) -> Dict[str, Dict[str, Any]]:
         """Load all configurations from wandb.run.config."""
-        if not self.is_recording_enabled():
-            return {}
+        # if not self.is_recording_enabled():
+        #     return {}
 
         result = {}
-        for key, value in self.wandb.run.config.items():
+        for key, value in self.run.config.items():
+            if "research_pipelines:" not in key:
+                continue
             # Only include entries that have our structure (config + dependencies)
-            if isinstance(value, dict) and "config" in value and "dependencies" in value:
-                result[key] = value
+            if isinstance(value, dict) and "callable" in value:
+                real_key = key.split("research_pipelines:")[1]
+                result[real_key] = self._normalize_config(value)
 
         return result
 
     def clear(self) -> None:
         """Clear all stored configurations from wandb.run.config."""
         if not self.is_recording_enabled():
-            return
+            raise RuntimeError("No active wandb run to clear configurations from.")
 
         # Get all keys that are our traced objects
         keys_to_remove = []
-        for key, value in self.wandb.run.config.items():
+        for key, value in self.run.config.items():
+            if "research_pipelines:" not in key:
+                continue
             if isinstance(value, dict) and "config" in value and "dependencies" in value:
                 keys_to_remove.append(key)
 
         # Remove them
         for key in keys_to_remove:
-            del self.wandb.run.config[key]
+            del self.run.config[key]

@@ -51,10 +51,10 @@ def _find_traced_dependencies(args: Dict[str, Any]) -> Dict[str, str]:
         if traced_id:
             dependencies[name] = traced_id
         elif isinstance(value, list):
-            for i, item in value:
+            for i, item in enumerate(value):
                 extract_ids(f"{name}:l{i}", item)
         elif isinstance(value, tuple):
-            for i, item in value:
+            for i, item in enumerate(value):
                 extract_ids(f"{name}:t{i}", item)
         elif isinstance(value, dict):
             for k, v in value.items():
