@@ -178,7 +178,8 @@ def register_traced_object(
     callable: str,
     config: Dict[str, Any],
     dependencies: Optional[Dict[str, str]] = None,
-    parent_id: Optional[str] = None
+    parent_id: Optional[str] = None,
+    tags: Optional[list[str]] = None
 ) -> None:
     """
     Register a traced object in the in-memory registry.
@@ -190,9 +191,12 @@ def register_traced_object(
         config: Configuration dictionary (basic types only)
         dependencies: Dictionary mapping argument names to object_ids this object depends on
         parent_id: Optional ID of the parent object if this is a nested trace
+        tags: Optional list of tags associated with this traced call
     """
     if dependencies is None:
         dependencies = {}
+    if tags is None:
+        tags = []
 
     _get_registry()[object_id] = {
         "id": object_id,
@@ -201,6 +205,7 @@ def register_traced_object(
         "config": config,
         "dependencies": dependencies,
         "parent_id": parent_id,
+        "tags": tags,
     }
 
 

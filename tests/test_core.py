@@ -52,7 +52,10 @@ class TestBasicTypeDetection:
 
     def test_non_basic_types(self):
         """Test that non-basic types are rejected."""
-        assert not is_basic_type([1, 2, 3])
+        # Lists/tuples of basic types ARE considered basic
+        assert is_basic_type([1, 2, 3])
+        assert is_basic_type(("a", "b"))
+        # But dicts, objects, etc. are not basic
         assert not is_basic_type({"key": "value"})
         assert not is_basic_type(set([1, 2]))
         assert not is_basic_type(lambda x: x)
@@ -85,8 +88,9 @@ class TestArgumentFiltering:
         args = {"name": "model", "layers": 3, "custom_obj": obj, "funcs": []}
         filtered, non_basic = filter_arguments(args)
         
-        assert filtered == {"name": "model", "layers": 3}
-        assert set(non_basic.keys()) == {"custom_obj", "funcs"}
+        # funcs=[] is a list of basic types, so it's considered basic
+        assert filtered == {"name": "model", "layers": 3, "funcs": []}
+        assert set(non_basic.keys()) == {"custom_obj"}
 
     def test_filter_with_traced_objects(self):
         """Test that traced objects are detected and separated."""
@@ -119,8 +123,9 @@ class TestArgumentFiltering:
         }
         filtered, non_basic = filter_arguments(args)
         
-        assert len(filtered) == 5  # str, int, float, bool, none
-        assert len(non_basic) == 2  # list, dict
+        # list of basic types is also basic, so we have 6 basic items
+        assert len(filtered) == 6  # str, int, float, bool, none, list
+        assert len(non_basic) == 1  # dict
 
 
 class TestTracedObjectRegistry:

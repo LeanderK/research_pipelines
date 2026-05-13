@@ -21,7 +21,7 @@ class WandBBackend(Backend):
             if run is not None:
                 self.run = run
             else:
-                self.run = self.run
+                self.run = self.wandb.run
         except ImportError:
             raise ImportError(
                 "wandb is required for WandBBackend. "
@@ -42,10 +42,14 @@ class WandBBackend(Backend):
         dependencies: Dict[str, str],
         object_type: str = "object",
         parent_id: Optional[str] = None,
+        tags: Optional[List[str]] = None,
     ) -> None:
         """Log configuration for a traced object to wandb.run.config."""
         if not self.is_recording_enabled():
             return
+
+        if tags is None:
+            tags = []
 
         data = {
             "type": object_type,
@@ -53,6 +57,7 @@ class WandBBackend(Backend):
             "dependencies": dependencies,
             "callable": callable,
             "parent_id": parent_id,
+            "tags": tags,
         }
 
         self.run.config[f"research_pipelines:{object_id}"] = data
@@ -66,6 +71,8 @@ class WandBBackend(Backend):
             config["dependencies"] = {}
         if "parent_id" not in config:
             config["parent_id"] = None
+        if "tags" not in config:
+            config["tags"] = []
         return config
 
     def get_config(self, object_id: str) -> Optional[Dict[str, Any]]:

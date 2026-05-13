@@ -99,6 +99,36 @@ model_obj, metric = query.build_arguments(
 )
 model_obj.load_state_dict(state_dict)
 evaluate(model_obj, metric)
+
+### Tagging traced calls
+
+If you call the same function multiple times with different arguments (e.g., evaluating on validation and test datasets), you can use **tags** to disambiguate which call you want to rebuild:
+
+```python
+from research_pipelines.decorators import tag
+import research_pipelines.query as query
+
+# Trace the same function with different tags
+with tag("final-validation"):
+    val_score = evaluate(model=model, dataset=validation_dataset)
+
+with tag("final-test"):
+    test_score = evaluate(model=model, dataset=test_dataset)
+
+# Rebuild the validation evaluation specifically
+val_result = query.build(evaluate, tag="final-validation")
+
+# Or rebuild by tag without specifying the function
+test_result = query.build_by_tag("final-test")
+
+# Tags can also be nested - they accumulate
+with tag("experiment-1"):
+    with tag("phase-1"):
+        result = evaluate(model=model, dataset=data)
+        # This traced call has tags: ["experiment-1", "phase-1"]
+```
+
+Tags are stored alongside traced configurations, making it easy to organize and retrieve results from complex experiments.
 ```
 
 ## Installation (Dev)
@@ -117,10 +147,10 @@ conda activate research_pipelines
 pip install -e .
 
 # Optional: Install the Torch example extra
-pip install ".[example]"
+pip install -e ".[example]"
 
 # Optional: Install wandb backend
-pip install ".[wandb]"
+pip install -e ".[wandb]"
 ```
 
 

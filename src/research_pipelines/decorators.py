@@ -26,6 +26,10 @@ import research_pipelines.dag as dag_tools
 # This allows us to detect when a traced object is used as a dependency
 _object_to_traced_id: Dict[int, str] = {}
 
+# Global tag stack for context-manager-based tagging
+# Tracks active tags in nested contexts, allowing tags to accumulate
+_tag_stack: list[str] = []
+
 
 def _mark_object_as_traced(obj: Any, traced_id: str) -> None:
     """Mark an object as traced by storing its id() -> traced_id mapping."""
@@ -35,6 +39,46 @@ def _mark_object_as_traced(obj: Any, traced_id: str) -> None:
 def _get_traced_id_from_object(obj: Any) -> Optional[str]:
     """Get the traced ID for an object, if it was marked as traced."""
     return _object_to_traced_id.get(id(obj))
+
+
+def tag(name: str):
+    """
+    Context manager for tagging traced function calls.
+    
+    Tags allow disambiguating multiple calls to the same function by associating
+    them with a string label. Tags accumulate in nested contexts.
+    
+    Example:
+        with tag("final-validation"):
+            result = traced_evaluate_fn(model, val_dataset)
+        
+        # Later, reconstruct by tag
+        val_result = query.build(traced_evaluate_fn, tag="final-validation")
+    
+    Args:
+        name: String tag to associate with traced calls in this context
+        
+    Yields:
+        None
+    """
+    import contextlib
+    
+    @contextlib.contextmanager
+    def tag_context():
+        global _tag_stack
+        _tag_stack.append(name)
+        try:
+            yield
+        finally:
+            _tag_stack.pop()
+    
+    return tag_context()
+
+
+def _get_current_tags() -> list[str]:
+    """Get a copy of the current tag stack."""
+    global _tag_stack
+    return list(_tag_stack)
 
 
 def _find_traced_dependencies(args: Dict[str, Any]) -> Dict[str, str]:
@@ -300,6 +344,9 @@ def _log_trace(
 
     # Filter arguments
     config, non_basic = filter_arguments(call_args)
+    
+    # Capture current tags and store separately (not in config to keep config clean)
+    current_tags = _get_current_tags()
 
     # Find dependencies (traced objects used as arguments)
     dependencies = _find_traced_dependencies(call_args)
@@ -322,7 +369,8 @@ def _log_trace(
         config=config,
         dependencies=dependencies,
         callable=callable,
-        parent_id=parent_id
+        parent_id=parent_id,
+        tags=current_tags
     )
 
     # Mark the returned object as traced
@@ -335,7 +383,8 @@ def _log_trace(
         dependencies=dependencies,
         object_type=traced_type,
         callable=callable,
-        parent_id=parent_id
+        parent_id=parent_id,
+        tags=current_tags
     )
 
     return object_id

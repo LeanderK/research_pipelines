@@ -160,3 +160,359 @@ class TestEndToEndPipeline:
 
         # Should include both preprocessing and original dataset
         assert len(deps) == 2
+
+
+class TestTagging:
+    """Tests for the tagging system."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        """Clear registry and setup backend before each test."""
+        clear_traced_registry()
+        reset_backend()
+        temp_dir = tempfile.mkdtemp()
+        backend = PickleBackend(directory=temp_dir, recording_enabled=True)
+        set_backend(backend)
+        yield
+        shutil.rmtree(temp_dir)
+
+    def test_single_tag_context(self):
+        """Test that a tag context properly tags traced objects."""
+        from research_pipelines.decorators import tag
+        from research_pipelines.core import get_traced_registry
+
+        @model()
+        def create_model():
+            return {"name": "model"}
+
+        @dataset()
+        def load_dataset():
+            return {"name": "dataset"}
+
+        @evaluation()
+        def evaluate(model, dataset):
+            return {"score": 0.95}
+
+        # Create traced objects
+        model_obj = create_model()
+        dataset_obj = load_dataset()
+
+        # Trace with a tag
+        with tag("final-validation"):
+            result = evaluate(model=model_obj, dataset=dataset_obj)
+
+        # Verify the tag was stored in the registry
+        registry = get_traced_registry()
+        eval_obj = [obj for obj in registry.values() if obj["type"] == "evaluation"][0]
+        assert "final-validation" in eval_obj["tags"]
+        assert eval_obj["tags"] == ["final-validation"]
+
+    def test_multiple_calls_with_different_tags(self):
+        """Test that multiple calls to the same function can be disambiguated with different tags."""
+        from research_pipelines.decorators import tag
+        from research_pipelines.core import get_traced_registry
+
+        @model()
+        def create_model():
+            return {"name": "model"}
+
+        @dataset()
+        def load_validation_data():
+            return {"name": "val"}
+
+        @dataset()
+        def load_test_data():
+            return {"name": "test"}
+
+        @evaluation()
+        def evaluate(model, dataset):
+            return {"score": 0.95}
+
+        # Create traced objects
+        model_obj = create_model()
+        val_dataset = load_validation_data()
+        test_dataset = load_test_data()
+
+        # Trace with different tags
+        with tag("final-validation"):
+            val_result = evaluate(model=model_obj, dataset=val_dataset)
+
+        with tag("final-test"):
+            test_result = evaluate(model=model_obj, dataset=test_dataset)
+
+        # Verify both calls are tagged correctly
+        registry = get_traced_registry()
+        eval_objs = [obj for obj in registry.values() if obj["type"] == "evaluation"]
+        assert len(eval_objs) == 2
+        assert any(obj["tags"] == ["final-validation"] for obj in eval_objs)
+        assert any(obj["tags"] == ["final-test"] for obj in eval_objs)
+
+    def test_build_without_tag_on_single_call(self):
+        """Test that build() works without a tag if there's only one call."""
+        from research_pipelines.decorators import tag
+        from research_pipelines.core import get_traced_registry
+
+        @model()
+        def create_model():
+            return {"name": "model"}
+
+        @dataset()
+        def load_dataset():
+            return {"name": "dataset"}
+
+        @evaluation()
+        def evaluate(model, dataset):
+            return {"score": 0.95}
+
+        model_obj = create_model()
+        dataset_obj = load_dataset()
+
+        with tag("some-tag"):
+            result = evaluate(model=model_obj, dataset=dataset_obj)
+
+        # Verify tag is stored even when there's only one call
+        registry = get_traced_registry()
+        eval_obj = [obj for obj in registry.values() if obj["type"] == "evaluation"][0]
+        assert eval_obj["tags"] == ["some-tag"]
+
+    def test_build_without_tag_on_multiple_calls_raises_error(self):
+        """Test that build() raises an error without a tag if there are multiple calls."""
+        from research_pipelines.decorators import tag
+        import research_pipelines.query as query
+
+        @model()
+        def create_model():
+            return {"name": "model"}
+
+        @dataset()
+        def load_validation_data():
+            return {"name": "val"}
+
+        @dataset()
+        def load_test_data():
+            return {"name": "test"}
+
+        @evaluation()
+        def evaluate(model, dataset):
+            return {"score": 0.95}
+
+        model_obj = create_model()
+        val_dataset = load_validation_data()
+        test_dataset = load_test_data()
+
+        with tag("val-tag"):
+            val_result = evaluate(model=model_obj, dataset=val_dataset)
+
+        with tag("test-tag"):
+            test_result = evaluate(model=model_obj, dataset=test_dataset)
+
+        # Should raise ValueError because there are multiple calls and no tag specified
+        with pytest.raises(ValueError, match="Multiple configurations found"):
+            query.build(evaluate)
+
+    def test_build_with_nonexistent_tag_raises_error(self):
+        """Test that build() raises an error with a nonexistent tag."""
+        from research_pipelines.decorators import tag
+        import research_pipelines.query as query
+
+        @model()
+        def create_model():
+            return {"name": "model"}
+
+        @dataset()
+        def load_dataset():
+            return {"name": "dataset"}
+
+        @evaluation()
+        def evaluate(model, dataset):
+            return {"score": 0.95}
+
+        model_obj = create_model()
+        dataset_obj = load_dataset()
+
+        with tag("existing-tag"):
+            result = evaluate(model=model_obj, dataset=dataset_obj)
+
+        # Should raise KeyError for nonexistent tag
+        with pytest.raises(KeyError, match="No configuration found"):
+            query.build(evaluate, tag="nonexistent-tag")
+
+    def test_nested_tags_accumulate(self):
+        """Test that nested tags accumulate in the tag list."""
+        from research_pipelines.decorators import tag
+        import research_pipelines.query as query
+        from research_pipelines.core import get_traced_registry
+
+        @model()
+        def create_model():
+            return {"name": "model"}
+
+        @dataset()
+        def load_dataset():
+            return {"name": "dataset"}
+
+        @evaluation()
+        def evaluate(model, dataset):
+            return {"score": 0.95}
+
+        model_obj = create_model()
+        dataset_obj = load_dataset()
+
+        # Nested tags should accumulate
+        with tag("outer-tag"):
+            with tag("inner-tag"):
+                result = evaluate(model=model_obj, dataset=dataset_obj)
+
+        # Check that both tags are in the registry
+        registry = get_traced_registry()
+        eval_obj = [obj for obj in registry.values() if obj["type"] == "evaluation"][0]
+        assert "outer-tag" in eval_obj["tags"]
+        assert "inner-tag" in eval_obj["tags"]
+        assert eval_obj["tags"] == ["outer-tag", "inner-tag"]
+
+    def test_build_by_tag_single_match(self):
+        """Test that build_by_tag() finds tags in the backend registry."""
+        from research_pipelines.decorators import tag
+        from research_pipelines.backends.manager import get_backend
+
+        @dataset()
+        def load_data(path: str):
+            return {"path": path}
+
+        @model()
+        def create_model():
+            return {"name": "model"}
+
+        @evaluation()
+        def evaluate(model, dataset):
+            return {"score": 0.95}
+
+        # Trace with tags
+        with tag("my-dataset"):
+            data = load_data(path="/data/train.csv")
+
+        model_obj = create_model()
+
+        with tag("my-evaluation"):
+            result = evaluate(model=model_obj, dataset=data)
+
+        # Verify tags are persisted to backend
+        backend = get_backend()
+        all_configs = backend.load_all()
+        eval_configs = [c for c in all_configs.values() if c["type"] == "evaluation"]
+        assert len(eval_configs) > 0
+        assert any("my-evaluation" in c.get("tags", []) for c in eval_configs)
+
+    def test_build_by_tag_no_match_raises_error(self):
+        """Test that build_by_tag() raises KeyError when no match is found."""
+        import research_pipelines.query as query
+
+        with pytest.raises(KeyError, match="No configuration found with tag"):
+            query.build_by_tag("nonexistent-tag")
+
+    def test_build_by_tag_multiple_matches_raises_error(self):
+        """Test that build_by_tag() detects duplicate tags in backend."""
+        from research_pipelines.decorators import tag
+        from research_pipelines.backends.manager import get_backend
+
+        @model()
+        def create_model():
+            return {"name": "model"}
+
+        @dataset()
+        def load_dataset1():
+            return {"name": "dataset1"}
+
+        @dataset()
+        def load_dataset2():
+            return {"name": "dataset2"}
+
+        @evaluation()
+        def evaluate(model, dataset):
+            return {"score": 0.95}
+
+        model_obj = create_model()
+        dataset1 = load_dataset1()
+        dataset2 = load_dataset2()
+
+        # Both calls have the same tag
+        with tag("duplicate-tag"):
+            result1 = evaluate(model=model_obj, dataset=dataset1)
+
+        with tag("duplicate-tag"):
+            result2 = evaluate(model=model_obj, dataset=dataset2)
+
+        # Verify both tags are in the backend
+        backend = get_backend()
+        all_configs = backend.load_all()
+        configs_with_tag = [c for c in all_configs.values() if "duplicate-tag" in c.get("tags", [])]
+        assert len(configs_with_tag) == 2  # Both should have the duplicate tag
+
+    def test_build_arguments_by_tag(self):
+        """Test that tags are properly stored with arguments."""
+        from research_pipelines.decorators import tag
+        from research_pipelines.backends.manager import get_backend
+
+        @dataset()
+        def load_data(path: str):
+            return {"path": path, "size": 1000}
+
+        @evaluation()
+        def evaluate(metric: str, dataset_input):
+            return {"score": 0.95}
+
+        # Trace with tags
+        with tag("training-data"):
+            data = load_data(path="/data/train.csv")
+
+        with tag("final-eval"):
+            result = evaluate(metric="accuracy", dataset_input=data)
+
+        # Verify tags are in backend with correct configuration
+        backend = get_backend()
+        all_configs = backend.load_all()
+        eval_configs = [c for c in all_configs.values() if c["type"] == "evaluation" and "final-eval" in c.get("tags", [])]
+        assert len(eval_configs) == 1
+        assert eval_configs[0]["config"]["metric"] == "accuracy"
+
+    def test_tag_isolation_between_contexts(self):
+        """Test that tags don't leak between different context managers."""
+        from research_pipelines.decorators import tag
+        from research_pipelines.core import get_traced_registry
+
+        @model()
+        def create_model():
+            return {"name": "model"}
+
+        @dataset()
+        def load_dataset1():
+            return {"name": "dataset1"}
+
+        @dataset()
+        def load_dataset2():
+            return {"name": "dataset2"}
+
+        @evaluation()
+        def evaluate(model, dataset):
+            return {"score": 0.95}
+
+        model_obj = create_model()
+        dataset1 = load_dataset1()
+        dataset2 = load_dataset2()
+
+        # First tagged context
+        with tag("tag-1"):
+            result1 = evaluate(model=model_obj, dataset=dataset1)
+
+        # Second tagged context - tag-1 should not be active
+        with tag("tag-2"):
+            result2 = evaluate(model=model_obj, dataset=dataset2)
+
+        # Verify tags are isolated
+        registry = get_traced_registry()
+        results = [obj for obj in registry.values() if obj["type"] == "evaluation"]
+        assert len(results) == 2
+        assert any(obj["tags"] == ["tag-1"] for obj in results)
+        assert any(obj["tags"] == ["tag-2"] for obj in results)
+        # Ensure no cross-contamination
+        assert not any("tag-1" in obj["tags"] and "tag-2" in obj["tags"] for obj in results)

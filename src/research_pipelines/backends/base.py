@@ -20,6 +20,7 @@ class Backend(ABC):
         dependencies: Dict[str, str],
         object_type: str = "object",
         parent_id: Optional[str] = None,
+        tags: Optional[List[str]] = None,
     ) -> None:
         """
         Log configuration for a traced object.
@@ -30,6 +31,8 @@ class Backend(ABC):
             config_dict: Dictionary of serializable configuration (str, int, float)
             dependencies: Dictionary mapping argument names to object_ids this object depends on
             object_type: Type of traced object (dataset, model, evaluation, ...)
+            parent_id: Optional ID of the parent object if this is a nested trace
+            tags: Optional list of tags associated with this traced call
         """
         pass
 

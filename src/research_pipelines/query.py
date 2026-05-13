@@ -149,6 +149,7 @@ def _prepare_for_build(
     backend: base.Backend,
     manual_kwargs: Optional[dict[str, Any]] = None,
     manual_import_translation: Optional[dict[str, str]] = None,
+    tag: Optional[str | list[str]] = None,
 ) -> tuple[str, dict[str, Any], dict[str, dict[str, Any]]]:
     module = to_build.__module__
     manual_import_translation_backwards = {
@@ -169,15 +170,44 @@ def _prepare_for_build(
         for v, config in configs.items()
         if config["callable"] == callable_str and config["parent_id"] is None
     ]
+    
+    # Filter by tag if provided. Accept either a single tag or a list of tags.
+    if tag is not None:
+        if isinstance(tag, (list, tuple)):
+            tag_set = set(tag)
+            def matches(cfg):
+                cfg_tags = set(cfg.get("tags", []))
+                return tag_set.issubset(cfg_tags)
+            target_configs = [(v, config) for v, config in target_configs if matches(config)]
+        else:
+            target_configs = [
+                (v, config)
+                for v, config in target_configs
+                if tag in config.get("tags", [])
+            ]
+        if len(target_configs) == 0:
+            raise KeyError(
+                f"No configuration found for {callable_str} with tag='{tag}'."
+            )
+        elif len(target_configs) > 1:
+            raise ValueError(
+                f"Multiple configurations found for {callable_str} with tag='{tag}'. "
+                f"Tags must be unique. Found {len(target_configs)} matches."
+            )
+    elif len(target_configs) > 1:
+        # Multiple configs but no tag specified - error to force disambiguation
+        raise ValueError(
+            f"Multiple configurations found for {callable_str}, cannot disambiguate. "
+            f"Please specify a tag using query.build(target, tag=...) to disambiguate, "
+            f"or use query.build_by_tag(tag) to query by tag instead."
+        )
+    
     if len(target_configs) == 0:
         msg = f"""No configuration found for {callable_str}.
         Consider adding an import translation for the module {module} if it cannot be imported directly,
         or check if the callable was traced with a different module name (e.g., __main__)."""
         raise ValueError(msg)
-    elif len(target_configs) > 1:
-        raise ValueError(
-            f"Multiple configurations found for {callable_str}, cannot disambiguate."
-        )
+    
     config_id, config = target_configs[0]
     return config_id, config, configs
 
@@ -240,6 +270,7 @@ def build(
     backend: Optional[base.Backend] = None,
     manual_import_translation: Optional[dict[str, str]] = None,
     persistent_cache: Optional[dict[str, Any]] = None,
+    tag: Optional[str | list[str]] = None,
 ) -> T:
     """
     Build an object from its traced configuration.
@@ -251,13 +282,14 @@ def build(
         manual_import_translation: Optional dictionary to translate module names in callables
             (e.g., for handling __main__ cases or renamed modules)
         persistent_cache: Optional dictionary to cache built objects
+        tag: Optional tag to disambiguate multiple calls to the same function
     Returns:
         The built object
     """
     if backend is None:
         backend = get_backend()
     config_id, config, configs = _prepare_for_build(
-        to_build, backend, manual_kwargs, manual_import_translation
+        to_build, backend, manual_kwargs, manual_import_translation, tag=tag
     )
 
     object_cache = {}
@@ -280,6 +312,7 @@ def build_arguments_kwargs(
     backend: Optional[base.Backend] = None,
     manual_import_translation: Optional[dict[str, str]] = None,
     persistent_cache: Optional[dict[str, Any]] = None,
+    tag: Optional[str | list[str]] = None,
 ) -> dict[str, Any]:
     """
     Untyped version of build_arguments that returns a dictionary of arguments instead of a tuple.
@@ -288,7 +321,7 @@ def build_arguments_kwargs(
     if backend is None:
         backend = get_backend()
     config_id, config, configs = _prepare_for_build(
-        to_build, backend, manual_kwargs, manual_import_translation
+        to_build, backend, manual_kwargs, manual_import_translation, tag=tag
     )
 
     object_cache = {}
@@ -335,6 +368,7 @@ def build_arguments(
     backend: Optional[base.Backend] = None,
     manual_import_translation: Optional[dict[str, str]] = None,
     persistent_cache: Optional[dict[str, Any]] = None,
+    tag: Optional[str | list[str]] = None,
 ) -> tuple[*Ts]:
     """
     Build arguments for a callable from its traced configuration.
@@ -350,6 +384,7 @@ def build_arguments(
         manual_import_translation: Optional dictionary to translate module names in callables
             (e.g., for handling __main__ cases or renamed modules)
         persistent_cache: Optional dictionary to cache built objects
+        tag: Optional tag to disambiguate multiple calls to the same function
     Returns:
         Tuple of arguments to call the object with, also supports getting the kwrags as a dictionary via the to_kwargs() method of the returned tuple
     """
@@ -357,11 +392,11 @@ def build_arguments(
         backend = get_backend()
 
     config_id, config, configs = _prepare_for_build(
-        target, backend, manual_kwargs, manual_import_translation
+        target, backend, manual_kwargs, manual_import_translation, tag=tag
     )
 
     kwargs = build_arguments_kwargs(
-        target, manual_kwargs, backend, manual_import_translation, persistent_cache
+        target, manual_kwargs, backend, manual_import_translation, persistent_cache, tag=tag
     )
 
     func, selection = _get_function_from_callable_str(
@@ -392,3 +427,158 @@ def build_arguments(
     args = ArgsTuple(arg_values)
     args.__names__ = tuple(arg_names)
     return args
+
+
+def build_by_tag(
+    tag: Optional[str | list[str]] = None,
+    manual_kwargs: Optional[dict[str, Any]] = None,
+    backend: Optional[base.Backend] = None,
+    manual_import_translation: Optional[dict[str, str]] = None,
+    persistent_cache: Optional[dict[str, Any]] = None,
+) -> Any:
+    """
+    Build an object by searching for a tag across all traced functions.
+    
+    This function searches the registry for any traced object with the given tag,
+    regardless of which function created it. Useful when you know the tag but not
+    the function that was traced.
+
+    Args:
+        tag: The tag to search for
+        backend: The backend to retrieve configurations from
+        manual_kwargs: Optional dictionary of arguments to override traced config values
+        manual_import_translation: Optional dictionary to translate module names in callables
+        persistent_cache: Optional dictionary to cache built objects
+    Returns:
+        The built object
+    Raises:
+        KeyError: If no config with the given tag is found
+        ValueError: If multiple configs have the same tag (tags must be unique)
+    """
+    if backend is None:
+        backend = get_backend()
+    
+    configs = backend.load_all()
+    
+    if tag is None:
+        raise ValueError("tag must be provided to build_by_tag")
+
+    # Find all configs with the matching tag (support single tag or list of tags)
+    def matches(cfg):
+        cfg_tags = set(cfg.get("tags", []))
+        if isinstance(tag, (list, tuple)):
+            return set(tag).issubset(cfg_tags)
+        return tag in cfg_tags
+
+    matching_configs = [
+        (config_id, config)
+        for config_id, config in configs.items()
+        if matches(config) and config.get("parent_id") is None
+    ]
+    
+    if len(matching_configs) == 0:
+        raise KeyError(f"No configuration found with tag='{tag}'.")
+    elif len(matching_configs) > 1:
+        raise ValueError(
+            f"Multiple configurations found with tag='{tag}'. "
+            f"Tags must be unique. Found {len(matching_configs)} matches."
+        )
+    
+    config_id, config = matching_configs[0]
+    
+    object_cache = {}
+    if persistent_cache is not None:
+        object_cache = persistent_cache
+
+    return _build_recursive(
+        config_id,
+        config,
+        object_cache,
+        configs,
+        manual_kwargs,
+        manual_import_translation,
+    )
+
+
+def build_arguments_by_tag(
+    tag: Optional[str | list[str]] = None,
+    manual_kwargs: Optional[dict[str, Any]] = None,
+    backend: Optional[base.Backend] = None,
+    manual_import_translation: Optional[dict[str, str]] = None,
+    persistent_cache: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    """
+    Build arguments for a callable by searching for a tag across all traced functions.
+
+    This function searches the registry for any traced object with the given tag,
+    regardless of which function created it, and returns the arguments that would
+    be used to call that function.
+
+    Args:
+        tag: The tag to search for
+        backend: The backend to retrieve configurations from
+        manual_kwargs: Optional dictionary of arguments to override traced config values
+        manual_import_translation: Optional dictionary to translate module names in callables
+        persistent_cache: Optional dictionary to cache built objects
+    Returns:
+        Dictionary of arguments that would be used to call the traced function
+    Raises:
+        KeyError: If no config with the given tag is found
+        ValueError: If multiple configs have the same tag (tags must be unique)
+    """
+    if backend is None:
+        backend = get_backend()
+    
+    configs = backend.load_all()
+    
+    if tag is None:
+        raise ValueError("tag must be provided to build_arguments_by_tag")
+
+    def matches(cfg):
+        cfg_tags = set(cfg.get("tags", []))
+        if isinstance(tag, (list, tuple)):
+            return set(tag).issubset(cfg_tags)
+        return tag in cfg_tags
+
+    matching_configs = [
+        (config_id, config)
+        for config_id, config in configs.items()
+        if matches(config) and config.get("parent_id") is None
+    ]
+
+    if len(matching_configs) == 0:
+        raise KeyError(f"No configuration found with tag='{tag}'.")
+    elif len(matching_configs) > 1:
+        raise ValueError(
+            f"Multiple configurations found with tag='{tag}'. "
+            f"Tags must be unique. Found {len(matching_configs)} matches."
+        )
+    
+    config_id, config = matching_configs[0]
+    
+    object_cache = {}
+    if persistent_cache is not None:
+        object_cache = persistent_cache
+
+    func, _ = _get_function_from_callable_str(
+        config["callable"], manual_import_translation or {}
+    )
+
+    dependency_objects = {}
+    for dep_id in config["dependencies"].values():
+        if dep_id not in object_cache:
+            dep_config = configs[dep_id]
+            _build_recursive(
+                dep_id,
+                dep_config,
+                object_cache,
+                configs,
+                manual_kwargs,
+                manual_import_translation,
+            )
+        dependency_objects[dep_id] = object_cache[dep_id]
+
+    kwargs = _build_args_from_config(
+        func, config, manual_kwargs or {}, dependency_objects, manual_import_translation or {}
+    )
+    return kwargs

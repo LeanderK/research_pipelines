@@ -44,10 +44,14 @@ class PickleBackend(Backend):
         dependencies: Dict[str, str],
         object_type: str = "object",
         parent_id: Optional[str] = None,
+        tags: Optional[List[str]] = None,
     ) -> None:
         """Log configuration for a traced object."""
         if not self.is_recording_enabled():
             return
+
+        if tags is None:
+            tags = []
 
         data = {
             "type": object_type,
@@ -55,6 +59,7 @@ class PickleBackend(Backend):
             "dependencies": dependencies,
             "callable": callable,
             "parent_id": parent_id,
+            "tags": tags,
         }
         with open(self._get_pickle_path(object_id), "wb") as f:
             pickle.dump(data, f)
