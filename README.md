@@ -246,7 +246,17 @@ from research_pipelines.backends.pickle_backend import PickleBackend
 from research_pipelines.backends.manager import set_backend
 
 backend = PickleBackend(directory=".traced_configs")
+backend.set_recording_enabled(True)
 set_backend(backend)
+
+train_set = load_data(path="/data/train.csv", split="train")
+model = build_model(architecture="bert")
+# Trace the same function with different tags
+with tag("final-validation"):
+    val_score = evaluate(model, train_set)
+
+with tag("final-test"):
+    test_score = evaluate(model, train_set)
 ```
 
 **WandBBackend** (for wandb integration):
@@ -263,6 +273,23 @@ try:
     # Configs are automatically logged to wandb.run.config
 except ImportError:
     print("wandb not installed; skipping WandBBackend example")
+```
+
+### 5. Load a Traced run
+```python
+from research_pipelines.backends.manager import read
+
+# read the saved traced arguments
+read(".traced_configs")  # also accepts wandb-runs 
+
+# rebuild the model by calling the function with the
+# traced arguments (no pickle!)
+model_obj = query.build(
+    to_build=build_model
+)
+# load saved weights
+model_obj.load_state_dict(state_dict)
+# do something!
 ```
 
 ## API Reference
