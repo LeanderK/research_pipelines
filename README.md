@@ -156,7 +156,7 @@ with tag("experiment-1"):
 ```
 
 Tags are stored alongside traced configurations, making it easy to organize and retrieve results from complex experiments.
-```
+
 
 ## Installation (Dev)
 
@@ -203,7 +203,7 @@ class MyModel:
 
 When you call a decorated function/constructor:
 - **Arguments are classified**:
-  - **Basic types** (str, int, float, bool, None): stored as configuration
+  - **Basic types** (str, int, float, bool, None, lists and tuples of those): stored as configuration
   - **Traced objects** (returned from other @traced functions): become dependencies
   - **Other types**: ignored (can be supplied manually later)
 - **Unique ID** is generated for this object
@@ -412,7 +412,7 @@ The framework is organized into modules:
   - `wandb_backend.py` - WandBBackend (wandb integration)
   - `manager.py` - Global backend management
 - `src/research_pipelines/dag.py` - DAG utilities
-- `tests/` - Test suite (61 tests, all passing)
+- `tests/` - Test suite
 
 ## Key Design Decisions
 
