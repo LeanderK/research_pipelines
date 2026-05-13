@@ -14,6 +14,8 @@ __all__ = [
     "model",
     "evaluation",
     "traced",
+    "no_tracing",
+    "tag",
     "get_backend",
     "set_backend",
     "IgnoreArg",
@@ -23,7 +25,7 @@ __all__ = [
 
 # Type hints for IDE/type checker support
 if TYPE_CHECKING:
-    from research_pipelines.decorators import dataset, model, evaluation, traced
+    from research_pipelines.decorators import dataset, model, evaluation, traced, no_tracing, tag
     from research_pipelines.backends.manager import get_backend, set_backend, read
     from research_pipelines.core import IgnoreArg, Ignore
     from research_pipelines import dag, query, visualize
@@ -48,6 +50,14 @@ def __getattr__(name):
         from research_pipelines.decorators import traced
 
         return traced
+    elif name == "no_tracing":
+        from research_pipelines.decorators import no_tracing
+
+        return no_tracing
+    elif name == "tag":
+        from research_pipelines.decorators import tag
+
+        return tag
     elif name == "get_backend":
         from research_pipelines.backends.manager import get_backend
 
